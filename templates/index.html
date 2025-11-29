@@ -490,11 +490,179 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #6b6c7b;
         }
+
+        /* Mobile Hamburger Menu */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            z-index: 1001;
+            background: #202123;
+            border: none;
+            color: white;
+            font-size: 24px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        /* Mobile Responsive Styles */
+        @media (max-width: 768px) {
+            .mobile-menu-btn {
+                display: block;
+            }
+
+            .sidebar {
+                position: fixed;
+                left: -260px;
+                top: 0;
+                height: 100vh;
+                z-index: 1000;
+                transition: left 0.3s ease;
+            }
+
+            .sidebar.open {
+                left: 0;
+            }
+
+            .sidebar-overlay.open {
+                display: block;
+            }
+
+            .main-content {
+                width: 100%;
+            }
+
+            .chat-messages {
+                padding: 70px 12px 12px 12px;
+            }
+
+            .message {
+                margin-bottom: 16px;
+            }
+
+            .message-content {
+                max-width: 90%;
+                font-size: 14px;
+                padding: 10px 14px;
+            }
+
+            .input-area {
+                padding: 12px;
+            }
+
+            .input-controls {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .control-btn, .mode-select {
+                font-size: 12px;
+                padding: 5px 10px;
+            }
+
+            .input-wrapper {
+                padding: 10px;
+            }
+
+            #userInput {
+                font-size: 14px;
+            }
+
+            #sendBtn {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+
+            /* Mobile table scrolling */
+            .table-wrapper {
+                margin: 12px -12px;
+            }
+
+            .formatted-table {
+                font-size: 12px;
+            }
+
+            .formatted-table th,
+            .formatted-table td {
+                padding: 8px 12px;
+            }
+
+            /* Mobile news cards */
+            .news-widgets {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .news-image,
+            .news-image-placeholder {
+                height: 160px;
+            }
+
+            /* Modal adjustments */
+            .modal-content {
+                width: 95%;
+                padding: 16px;
+                max-height: 85vh;
+            }
+
+            .modal-title {
+                font-size: 16px;
+            }
+        }
+
+        /* Small mobile devices */
+        @media (max-width: 480px) {
+            .chat-messages {
+                padding: 60px 8px 8px 8px;
+            }
+
+            .message-content {
+                max-width: 95%;
+                font-size: 13px;
+            }
+
+            .input-controls {
+                font-size: 11px;
+            }
+
+            .control-btn, .mode-select {
+                font-size: 11px;
+                padding: 4px 8px;
+            }
+
+            .formatted-table {
+                font-size: 11px;
+            }
+
+            .formatted-table th,
+            .formatted-table td {
+                padding: 6px 8px;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Mobile Menu Button -->
+    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <!-- Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <button class="new-chat-btn" id="newChatBtn">+ New chat</button>
         </div>
@@ -561,6 +729,9 @@
         const docModal = document.getElementById('docModal');
         const closeModal = document.getElementById('closeModal');
         const docModalList = document.getElementById('docModalList');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
 
         // Initialize
         loadSessions();
@@ -591,6 +762,25 @@
             docModal.style.display = 'none';
         });
 
+        // Mobile menu toggle
+        mobileMenuBtn.addEventListener('click', () => {
+            sidebar.classList.add('open');
+            sidebarOverlay.classList.add('open');
+        });
+
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            sidebarOverlay.classList.remove('open');
+        });
+
+        // Close sidebar when clicking a chat
+        function closeMobileSidebar() {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('open');
+                sidebarOverlay.classList.remove('open');
+            }
+        }
+
         // Functions
         async function loadSessions() {
             try {
@@ -608,6 +798,7 @@
                     item.onclick = (e) => {
                         if (!e.target.classList.contains('delete-chat-btn')) {
                             loadSession(session.id);
+                            closeMobileSidebar();
                         }
                     };
                     chatList.appendChild(item);
@@ -645,6 +836,7 @@
                 currentSessionId = data.session_id;
                 chatMessages.innerHTML = '';
                 loadSessions();
+                closeMobileSidebar();
             } catch (error) {
                 console.error('Error creating session:', error);
             }
