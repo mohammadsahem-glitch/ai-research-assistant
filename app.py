@@ -535,12 +535,18 @@ def health_check():
     serp_key_raw = os.environ.get('SERPAPI_API_KEY', '')
     serp_key_cleaned = serp_key_raw.strip().strip('"').strip("'") if serp_key_raw else ''
 
+    # Show key prefix/suffix to help diagnose issues (safe - doesn't expose full key)
+    key_preview = ''
+    if serp_key_cleaned:
+        key_preview = f"{serp_key_cleaned[:8]}...{serp_key_cleaned[-8:]}"
+
     response = {
         'status': 'healthy',
         'search_enabled': search_tool is not None,
         'serpapi_configured': bool(serp_key_raw),
         'serpapi_key_length_raw': len(serp_key_raw),
-        'serpapi_key_length_cleaned': len(serp_key_cleaned)
+        'serpapi_key_length_cleaned': len(serp_key_cleaned),
+        'serpapi_key_preview': key_preview
     }
     if search_tool_error:
         response['search_error'] = search_tool_error
