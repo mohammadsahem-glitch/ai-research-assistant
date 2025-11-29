@@ -97,10 +97,25 @@ with app.app_context():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-# Initialize the search tool
-search_tool = SerpApiGoogleSearchTool()
+# Initialize the search tool with API key from environment
+# The tool expects SERPAPI_API_KEY environment variable
+try:
+    # Disable interactive prompts by setting the API key from environment
+    serp_api_key = os.environ.get('SERPAPI_API_KEY')
+    if not serp_api_key:
+        print("Warning: SERPAPI_API_KEY not found in environment variables")
+        # Create a dummy tool to prevent crashes
+        search_tool = None
+    else:
+        search_tool = SerpApiGoogleSearchTool()
+except Exception as e:
+    print(f"Error initializing SerpAPI tool: {e}")
+    search_tool = None
 
 # Define the main conversational agent with search capabilities
+# Only include search_tool if it was successfully initialized
+agent_tools = [search_tool] if search_tool else []
+
 conversational_agent = Agent(
     role="Intelligent AI Assistant",
     goal="""You are a versatile AI assistant similar to ChatGPT. Your goals are to:
@@ -120,7 +135,7 @@ conversational_agent = Agent(
     and when to simply converse based on your knowledge. When uncertain about what
     the user wants, you ask clarifying questions.""",
     verbose=False,
-    tools=[search_tool],
+    tools=agent_tools,
     allow_delegation=False
 )
 
