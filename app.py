@@ -104,20 +104,24 @@ search_tool_error = None
 try:
     # Disable interactive prompts by setting the API key from environment
     serp_api_key = os.environ.get('SERPAPI_API_KEY')
+    print(f"[STARTUP] Initializing SerpAPI search tool...")
     if not serp_api_key:
-        print("Warning: SERPAPI_API_KEY not found in environment variables")
+        print("[ERROR] SERPAPI_API_KEY not found in environment variables")
         search_tool_error = "SERPAPI_API_KEY not found"
     else:
         # Strip whitespace and quotes that might be added by Railway
         serp_api_key = serp_api_key.strip().strip('"').strip("'")
         # Set the cleaned key back to environment
         os.environ['SERPAPI_API_KEY'] = serp_api_key
-        print(f"Cleaned SERPAPI key length: {len(serp_api_key)}")
+        print(f"[INFO] Cleaned SERPAPI key length: {len(serp_api_key)}")
+        print(f"[INFO] Attempting to initialize SerpApiGoogleSearchTool...")
         search_tool = SerpApiGoogleSearchTool()
-        print("✓ SerpAPI search tool initialized successfully")
+        print("[SUCCESS] ✓ SerpAPI search tool initialized successfully")
 except Exception as e:
     error_msg = f"Error initializing SerpAPI tool: {str(e)}"
-    print(error_msg)
+    print(f"[ERROR] {error_msg}")
+    import traceback
+    print(f"[ERROR] Full traceback:\n{traceback.format_exc()}")
     search_tool_error = str(e)
     search_tool = None
 
