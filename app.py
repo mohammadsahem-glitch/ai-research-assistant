@@ -108,6 +108,11 @@ try:
         print("Warning: SERPAPI_API_KEY not found in environment variables")
         search_tool_error = "SERPAPI_API_KEY not found"
     else:
+        # Strip whitespace and quotes that might be added by Railway
+        serp_api_key = serp_api_key.strip().strip('"').strip("'")
+        # Set the cleaned key back to environment
+        os.environ['SERPAPI_API_KEY'] = serp_api_key
+        print(f"Cleaned SERPAPI key length: {len(serp_api_key)}")
         search_tool = SerpApiGoogleSearchTool()
         print("✓ SerpAPI search tool initialized successfully")
 except Exception as e:
