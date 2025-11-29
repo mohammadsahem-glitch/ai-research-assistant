@@ -520,6 +520,15 @@ def delete_session(session_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint to verify configuration"""
+    return jsonify({
+        'status': 'healthy',
+        'search_enabled': search_tool is not None,
+        'serpapi_configured': bool(os.environ.get('SERPAPI_API_KEY'))
+    })
+
 @app.route('/chat', methods=['POST'])
 @login_required
 def chat():
