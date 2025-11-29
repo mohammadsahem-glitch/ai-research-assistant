@@ -523,10 +523,12 @@ def delete_session(session_id):
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint to verify configuration"""
+    serp_key = os.environ.get('SERPAPI_API_KEY')
     return jsonify({
         'status': 'healthy',
         'search_enabled': search_tool is not None,
-        'serpapi_configured': bool(os.environ.get('SERPAPI_API_KEY'))
+        'serpapi_configured': bool(serp_key),
+        'serpapi_key_length': len(serp_key) if serp_key else 0  # For debugging
     })
 
 @app.route('/chat', methods=['POST'])
