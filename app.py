@@ -99,17 +99,21 @@ def allowed_file(filename):
 
 # Initialize the search tool with API key from environment
 # The tool expects SERPAPI_API_KEY environment variable
+search_tool = None
+search_tool_error = None
 try:
     # Disable interactive prompts by setting the API key from environment
     serp_api_key = os.environ.get('SERPAPI_API_KEY')
     if not serp_api_key:
         print("Warning: SERPAPI_API_KEY not found in environment variables")
-        # Create a dummy tool to prevent crashes
-        search_tool = None
+        search_tool_error = "SERPAPI_API_KEY not found"
     else:
         search_tool = SerpApiGoogleSearchTool()
+        print("✓ SerpAPI search tool initialized successfully")
 except Exception as e:
-    print(f"Error initializing SerpAPI tool: {e}")
+    error_msg = f"Error initializing SerpAPI tool: {str(e)}"
+    print(error_msg)
+    search_tool_error = str(e)
     search_tool = None
 
 # Define the main conversational agent with search capabilities
@@ -524,12 +528,15 @@ def delete_session(session_id):
 def health_check():
     """Health check endpoint to verify configuration"""
     serp_key = os.environ.get('SERPAPI_API_KEY')
-    return jsonify({
+    response = {
         'status': 'healthy',
         'search_enabled': search_tool is not None,
         'serpapi_configured': bool(serp_key),
-        'serpapi_key_length': len(serp_key) if serp_key else 0  # For debugging
-    })
+        'serpapi_key_length': len(serp_key) if serp_key else 0
+    }
+    if search_tool_error:
+        response['search_error'] = search_tool_error
+    return jsonify(response)
 
 @app.route('/chat', methods=['POST'])
 @login_required
