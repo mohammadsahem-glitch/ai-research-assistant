@@ -168,6 +168,21 @@
             color: #ececf1;
         }
 
+        .message.system {
+            justify-content: center;
+            margin: 12px 0;
+        }
+
+        .message.system .message-content {
+            background: #2a2b32;
+            color: #9ca3af;
+            font-size: 13px;
+            font-style: italic;
+            border: 1px solid #4d4d4f;
+            max-width: 60%;
+            text-align: center;
+        }
+
         /* Table Styles */
         .table-wrapper {
             margin: 16px 0;
@@ -849,7 +864,11 @@
                 currentSessionId = sessionId;
                 chatMessages.innerHTML = '';
                 data.messages.forEach(msg => {
-                    addMessage(msg.content, msg.role === 'user');
+                    if (msg.role === 'system') {
+                        addMessage(msg.content, false, 'system');
+                    } else {
+                        addMessage(msg.content, msg.role === 'user');
+                    }
                 });
                 loadSessions();
             } catch (error) {
@@ -879,6 +898,9 @@
 
             const formData = new FormData();
             formData.append('file', file);
+            if (currentSessionId) {
+                formData.append('session_id', currentSessionId);
+            }
 
             try {
                 const response = await fetch('/upload', {
@@ -886,22 +908,63 @@
                     body: formData
                 });
                 const data = await response.json();
-                alert(data.message || 'File uploaded successfully!');
-                loadDocuments();
+
+                if (data.success) {
+                    // Add system message to chat showing the upload
+                    const uploadMessage = `📎 Uploaded: ${data.filename} (${data.file_type.toUpperCase()}, ${data.char_count} characters)`;
+                    addMessage(uploadMessage, false, 'system');
+                    loadDocuments();
+
+                    // Show success notification
+                    showNotification(data.message, 'success');
+                } else {
+                    showNotification(data.error || 'Error uploading file', 'error');
+                }
             } catch (error) {
                 console.error('Error uploading file:', error);
-                alert('Error uploading file');
+                showNotification('Error uploading file', 'error');
             }
+
+            // Clear file input
+            fileInput.value = '';
         }
 
-        function addMessage(content, isUser) {
+        function showNotification(message, type = 'info') {
+            // Simple notification - could be improved with a toast library
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                background: ${type === 'success' ? '#10a37f' : type === 'error' ? '#ef4444' : '#565869'};
+                color: white;
+                border-radius: 8px;
+                z-index: 10000;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                font-size: 14px;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        function addMessage(content, isUser, role = null) {
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            const messageRole = role || (isUser ? 'user' : 'bot');
+            messageDiv.className = `message ${messageRole}`;
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
 
             if (isUser) {
+                contentDiv.textContent = content;
+            } else if (messageRole === 'system') {
                 contentDiv.textContent = content;
             } else {
                 contentDiv.innerHTML = content;

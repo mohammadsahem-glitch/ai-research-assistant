@@ -73,7 +73,7 @@ class ChatSession(db.Model):
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # 'user' or 'assistant'
+    role = db.Column(db.String(20), nullable=False)  # 'user', 'assistant', or 'system'
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -356,6 +356,7 @@ def upload_file():
             return jsonify({'error': 'No file provided'}), 400
 
         file = request.files['file']
+        session_id = request.form.get('session_id')
 
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
@@ -376,11 +377,22 @@ def upload_file():
                     'success': True,
                     'message': f'📋 Document "{existing_doc.filename}" is already uploaded!',
                     'filename': existing_doc.filename,
-                    'already_exists': True
+                    'file_type': existing_doc.file_type,
+                    'already_exists': True,
+                    'char_count': len(existing_doc.content)
                 })
 
             # Extract text from file
-            content = extract_text_from_file(filepath, filename)
+            try:
+                content = extract_text_from_file(filepath, filename)
+            except Exception as ocr_error:
+                # If OCR fails (e.g., tesseract not installed), just note it
+                file_ext = filename.rsplit('.', 1)[1].lower()
+                if file_ext in ['png', 'jpg', 'jpeg', 'gif', 'bmp']:
+                    content = f"[Image file - OCR not available on this server. Install Tesseract-OCR for text extraction]"
+                else:
+                    raise ocr_error
+
             file_type = filename.rsplit('.', 1)[1].lower()
 
             # Store in database
@@ -394,11 +406,25 @@ def upload_file():
             db.session.add(new_doc)
             db.session.commit()
 
+            # If session_id provided, add system message to chat
+            if session_id:
+                session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first()
+                if session:
+                    system_msg = Message(
+                        session_id=session_id,
+                        role='system',
+                        content=f'📎 Uploaded: {filename} ({file_type.upper()}, {len(content)} characters)'
+                    )
+                    db.session.add(system_msg)
+                    db.session.commit()
+
             return jsonify({
                 'success': True,
                 'message': f'✅ File "{filename}" uploaded and indexed successfully!',
                 'filename': filename,
-                'already_exists': False
+                'file_type': file_type,
+                'already_exists': False,
+                'char_count': len(content)
             })
         else:
             return jsonify({'error': '❌ File type not allowed. Allowed types: txt, md, pdf, doc, docx, ppt, pptx, xls, xlsx, png, jpg, jpeg, gif, bmp'}), 400
