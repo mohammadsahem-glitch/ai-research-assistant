@@ -532,12 +532,15 @@ def delete_session(session_id):
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint to verify configuration"""
-    serp_key = os.environ.get('SERPAPI_API_KEY')
+    serp_key_raw = os.environ.get('SERPAPI_API_KEY', '')
+    serp_key_cleaned = serp_key_raw.strip().strip('"').strip("'") if serp_key_raw else ''
+
     response = {
         'status': 'healthy',
         'search_enabled': search_tool is not None,
-        'serpapi_configured': bool(serp_key),
-        'serpapi_key_length': len(serp_key) if serp_key else 0
+        'serpapi_configured': bool(serp_key_raw),
+        'serpapi_key_length_raw': len(serp_key_raw),
+        'serpapi_key_length_cleaned': len(serp_key_cleaned)
     }
     if search_tool_error:
         response['search_error'] = search_tool_error
