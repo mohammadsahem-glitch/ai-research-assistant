@@ -13,19 +13,20 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-            background: #343541;
+            background: #f9fafb;
             height: 100vh;
             display: flex;
-            color: #ececf1;
+            color: #1f2937;
         }
 
         /* Sidebar */
         .sidebar {
             width: 260px;
-            background: #202123;
+            background: #ffffff;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid #4d4d4f;
+            border-right: 1px solid #e5e7eb;
+            box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
         }
 
         .sidebar-header {
@@ -35,17 +36,20 @@
         .new-chat-btn {
             width: 100%;
             padding: 12px;
-            background: transparent;
-            border: 1px solid #565869;
+            background: #10a37f;
+            border: none;
             color: white;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
-            transition: background 0.2s;
+            font-weight: 500;
+            transition: all 0.2s;
         }
 
         .new-chat-btn:hover {
-            background: #40414f;
+            background: #0d8c6d;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(16, 163, 127, 0.3);
         }
 
         .chat-list {
@@ -57,22 +61,24 @@
         .chat-item {
             padding: 12px;
             margin-bottom: 4px;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
-            color: #ececf1;
-            transition: background 0.2s;
+            color: #374151;
+            transition: all 0.2s;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
         .chat-item:hover {
-            background: #2a2b32;
+            background: #f3f4f6;
         }
 
         .chat-item.active {
-            background: #343541;
+            background: #e0f2fe;
+            color: #0369a1;
+            font-weight: 500;
         }
 
         .chat-item-title {
@@ -98,7 +104,7 @@
 
         .sidebar-footer {
             padding: 12px;
-            border-top: 1px solid #4d4d4f;
+            border-top: 1px solid #e5e7eb;
         }
 
         .sidebar-btn {
@@ -106,21 +112,25 @@
             padding: 10px;
             background: transparent;
             border: none;
-            color: #ececf1;
-            border-radius: 6px;
+            color: #374151;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 13px;
             text-align: left;
             margin-bottom: 4px;
-            transition: background 0.2s;
+            transition: all 0.2s;
         }
 
         .sidebar-btn:hover {
-            background: #2a2b32;
+            background: #f3f4f6;
         }
 
         .logout-btn {
-            color: #ef4444;
+            color: #dc2626;
+        }
+
+        .logout-btn:hover {
+            background: #fee2e2;
         }
 
         /* Main Content */
@@ -161,11 +171,14 @@
         .message.user .message-content {
             background: #10a37f;
             color: white;
+            box-shadow: 0 1px 4px rgba(16, 163, 127, 0.2);
         }
 
         .message.bot .message-content {
-            background: #444654;
-            color: #ececf1;
+            background: #ffffff;
+            color: #1f2937;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
         }
 
         .message.system {
@@ -174,11 +187,11 @@
         }
 
         .message.system .message-content {
-            background: #2a2b32;
-            color: #9ca3af;
+            background: #f0f9ff;
+            color: #0369a1;
             font-size: 13px;
             font-style: italic;
-            border: 1px solid #4d4d4f;
+            border: 1px solid #bae6fd;
             max-width: 60%;
             text-align: center;
         }
@@ -193,8 +206,9 @@
         .formatted-table {
             width: 100%;
             border-collapse: collapse;
-            background: #343541;
+            background: #ffffff;
             font-size: 14px;
+            border: 1px solid #e5e7eb;
         }
 
         .formatted-table thead {
@@ -210,11 +224,11 @@
 
         .formatted-table td {
             padding: 10px 16px;
-            border-bottom: 1px solid #4d4d4f;
+            border-bottom: 1px solid #e5e7eb;
         }
 
         .formatted-table tbody tr:hover {
-            background: #40414f;
+            background: #f9fafb;
         }
 
         /* News Widgets */
@@ -226,15 +240,18 @@
         }
 
         .news-card {
-            background: #40414f;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
             border-radius: 8px;
             overflow: hidden;
             cursor: pointer;
             transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
 
         .news-card:hover {
-            background: #4d4d4f;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
         }
 
         .news-image {
@@ -250,7 +267,7 @@
             align-items: center;
             justify-content: center;
             font-size: 40px;
-            background: #343541;
+            background: #f3f4f6;
         }
 
         .news-content {
@@ -261,12 +278,12 @@
             font-size: 14px;
             font-weight: 600;
             margin-bottom: 8px;
-            color: #ececf1;
+            color: #1f2937;
         }
 
         .news-description {
             font-size: 13px;
-            color: #9ca3af;
+            color: #6b7280;
             margin-bottom: 12px;
         }
 
@@ -275,25 +292,31 @@
             justify-content: space-between;
             align-items: center;
             padding-top: 8px;
-            border-top: 1px solid #4d4d4f;
+            border-top: 1px solid #e5e7eb;
         }
 
         .news-source {
             font-size: 12px;
-            color: #9ca3af;
+            color: #6b7280;
         }
 
         .news-link {
             font-size: 13px;
             color: #10a37f;
             text-decoration: none;
+            font-weight: 500;
+        }
+
+        .news-link:hover {
+            color: #0d8c6d;
         }
 
         /* Input Area */
         .input-area {
             padding: 20px;
-            background: #343541;
-            border-top: 1px solid #4d4d4f;
+            background: #ffffff;
+            border-top: 1px solid #e5e7eb;
+            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
         }
 
         .input-container {
@@ -310,50 +333,70 @@
 
         .control-btn {
             padding: 6px 12px;
-            background: #40414f;
-            border: none;
-            color: #ececf1;
+            background: #f3f4f6;
+            border: 1px solid #d1d5db;
+            color: #374151;
             border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            font-weight: 500;
         }
 
         .control-btn:hover {
-            background: #565869;
+            background: #e5e7eb;
+            border-color: #9ca3af;
         }
 
         .control-btn.active {
             background: #10a37f;
+            color: white;
+            border-color: #10a37f;
         }
 
         .mode-select {
             padding: 6px 12px;
-            background: #40414f;
-            border: none;
-            color: #ececf1;
+            background: #f3f4f6;
+            border: 1px solid #d1d5db;
+            color: #374151;
             border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
+            font-weight: 500;
+        }
+
+        .mode-select:hover {
+            background: #e5e7eb;
+            border-color: #9ca3af;
         }
 
         .input-wrapper {
             display: flex;
             gap: 8px;
-            background: #40414f;
+            background: #f9fafb;
+            border: 2px solid #d1d5db;
             border-radius: 12px;
             padding: 12px;
+            transition: border-color 0.2s;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: #10a37f;
         }
 
         #userInput {
             flex: 1;
             background: transparent;
             border: none;
-            color: #ececf1;
+            color: #1f2937;
             font-size: 15px;
             outline: none;
             resize: none;
             max-height: 200px;
+        }
+
+        #userInput::placeholder {
+            color: #9ca3af;
         }
 
         #sendBtn {
@@ -372,7 +415,7 @@
         }
 
         #sendBtn:disabled {
-            background: #565869;
+            background: #9ca3af;
             cursor: not-allowed;
         }
 
@@ -382,9 +425,11 @@
             align-items: center;
             gap: 8px;
             padding: 12px 16px;
-            background: #444654;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
             border-radius: 12px;
             width: fit-content;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
         }
 
         .typing-dots {
@@ -419,7 +464,7 @@
 
         .progress-text {
             font-size: 13px;
-            color: #9ca3af;
+            color: #6b7280;
         }
 
         /* Modal */
@@ -430,20 +475,21 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.5);
             z-index: 1000;
             align-items: center;
             justify-content: center;
         }
 
         .modal-content {
-            background: #2a2b32;
+            background: #ffffff;
             padding: 24px;
             border-radius: 12px;
             max-width: 500px;
             width: 90%;
             max-height: 80vh;
             overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
         }
 
         .modal-header {
@@ -456,32 +502,46 @@
         .modal-title {
             font-size: 18px;
             font-weight: 600;
+            color: #1f2937;
         }
 
         .close-modal {
             background: transparent;
             border: none;
-            color: #ececf1;
+            color: #6b7280;
             font-size: 24px;
             cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .close-modal:hover {
+            color: #1f2937;
         }
 
         .doc-item {
             padding: 12px;
-            background: #40414f;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
             border-radius: 8px;
             margin-bottom: 8px;
+            transition: all 0.2s;
+        }
+
+        .doc-item:hover {
+            background: #f3f4f6;
+            border-color: #d1d5db;
         }
 
         .doc-name {
             font-size: 14px;
             font-weight: 500;
             margin-bottom: 4px;
+            color: #1f2937;
         }
 
         .doc-meta {
             font-size: 12px;
-            color: #9ca3af;
+            color: #6b7280;
         }
 
         #fileInput {
@@ -494,16 +554,16 @@
         }
 
         ::-webkit-scrollbar-track {
-            background: #202123;
+            background: #f9fafb;
         }
 
         ::-webkit-scrollbar-thumb {
-            background: #565869;
+            background: #d1d5db;
             border-radius: 4px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: #6b6c7b;
+            background: #9ca3af;
         }
 
         /* Mobile Hamburger Menu */
@@ -513,13 +573,19 @@
             top: 16px;
             left: 16px;
             z-index: 1001;
-            background: #202123;
-            border: none;
-            color: white;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            color: #374151;
             font-size: 24px;
             padding: 8px 12px;
             border-radius: 8px;
             cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s;
+        }
+
+        .mobile-menu-btn:hover {
+            background: #f3f4f6;
         }
 
         .sidebar-overlay {
@@ -566,10 +632,11 @@
 
             .message {
                 margin-bottom: 16px;
+                gap: 12px;
             }
 
             .message-content {
-                max-width: 90%;
+                max-width: 85%;
                 font-size: 14px;
                 padding: 10px 14px;
             }
@@ -585,7 +652,7 @@
 
             .control-btn, .mode-select {
                 font-size: 12px;
-                padding: 5px 10px;
+                padding: 6px 12px;
             }
 
             .input-wrapper {
@@ -593,17 +660,19 @@
             }
 
             #userInput {
-                font-size: 14px;
+                font-size: 16px; /* Prevents zoom on iOS */
+                line-height: 1.5;
             }
 
             #sendBtn {
-                padding: 6px 12px;
+                padding: 8px 14px;
                 font-size: 13px;
             }
 
             /* Mobile table scrolling */
             .table-wrapper {
                 margin: 12px -12px;
+                -webkit-overflow-scrolling: touch;
             }
 
             .formatted-table {
@@ -613,6 +682,7 @@
             .formatted-table th,
             .formatted-table td {
                 padding: 8px 12px;
+                white-space: nowrap;
             }
 
             /* Mobile news cards */
@@ -623,7 +693,7 @@
 
             .news-image,
             .news-image-placeholder {
-                height: 160px;
+                height: 180px;
             }
 
             /* Modal adjustments */
@@ -636,26 +706,63 @@
             .modal-title {
                 font-size: 16px;
             }
+
+            /* Improved touch targets for mobile */
+            .chat-item,
+            .sidebar-btn,
+            .control-btn,
+            .mode-select {
+                min-height: 44px;
+                display: flex;
+                align-items: center;
+            }
         }
 
-        /* Small mobile devices */
+        /* Small mobile devices (Android phones) */
         @media (max-width: 480px) {
+            body {
+                font-size: 14px;
+            }
+
+            .mobile-menu-btn {
+                top: 12px;
+                left: 12px;
+                padding: 6px 10px;
+            }
+
             .chat-messages {
                 padding: 60px 8px 8px 8px;
             }
 
             .message-content {
-                max-width: 95%;
-                font-size: 13px;
+                max-width: 90%;
+                font-size: 14px;
+                padding: 8px 12px;
+            }
+
+            .input-area {
+                padding: 8px;
             }
 
             .input-controls {
-                font-size: 11px;
+                gap: 6px;
             }
 
             .control-btn, .mode-select {
                 font-size: 11px;
-                padding: 4px 8px;
+                padding: 6px 10px;
+            }
+
+            .input-wrapper {
+                padding: 8px;
+            }
+
+            #userInput {
+                font-size: 16px; /* Prevent iOS zoom */
+            }
+
+            #sendBtn {
+                padding: 6px 10px;
             }
 
             .formatted-table {
@@ -665,6 +772,27 @@
             .formatted-table th,
             .formatted-table td {
                 padding: 6px 8px;
+            }
+
+            .news-image,
+            .news-image-placeholder {
+                height: 140px;
+            }
+        }
+
+        /* Landscape mode optimizations for tablets and phones */
+        @media (max-width: 768px) and (orientation: landscape) {
+            .chat-messages {
+                padding: 60px 16px 16px 16px;
+            }
+
+            .input-area {
+                padding: 10px;
+            }
+
+            .mobile-menu-btn {
+                top: 10px;
+                left: 10px;
             }
         }
     </style>
