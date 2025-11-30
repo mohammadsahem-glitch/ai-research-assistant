@@ -118,6 +118,16 @@ class CustomSerpApiSearchTool(BaseTool):
         super().__init__(**kwargs)
         self.api_key = api_key
 
+    def _is_news_query(self, query: str) -> bool:
+        """Detect if the query is asking for news or recent information."""
+        news_keywords = [
+            'news', 'latest', 'recent', 'today', 'current', 'breaking',
+            'update', 'happening', 'now', 'this week', 'yesterday',
+            'announce', 'announced', 'new release', 'just', 'trending'
+        ]
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in news_keywords)
+
     def _run(self, query: str) -> str:
         """Execute the search query using SerpAPI."""
         try:
@@ -126,45 +136,86 @@ class CustomSerpApiSearchTool(BaseTool):
             if not self.api_key:
                 return "Error: SerpAPI key not configured"
 
+            # Detect if this is a news/recent info query
+            is_news_query = self._is_news_query(query)
+
+            formatted_results = []
+
+            # If it's a news query, do a dedicated Google News search first
+            if is_news_query:
+                news_params = {
+                    "q": query,
+                    "api_key": self.api_key,
+                    "tbm": "nws",  # Google News search
+                    "tbs": "qdr:w",  # Past week results
+                    "num": 10,
+                    "hl": "en",
+                    "gl": "us",
+                }
+
+                news_search = GoogleSearch(news_params)
+                news_results = news_search.get_dict()
+
+                if "news_results" in news_results and news_results["news_results"]:
+                    formatted_results.append("**📰 Latest News (Past Week):**\n")
+                    for i, news in enumerate(news_results["news_results"][:6], 1):
+                        title = news.get("title", "No title")
+                        link = news.get("link", "")
+                        source = news.get("source", {})
+                        source_name = source.get("name", "Unknown") if isinstance(source, dict) else str(source)
+                        date = news.get("date", "")
+                        snippet = news.get("snippet", "")
+                        formatted_results.append(
+                            f"{i}. **{title}**\n"
+                            f"   📌 {source_name} • {date}\n"
+                            f"   {snippet}\n"
+                            f"   🔗 {link}\n"
+                        )
+
+            # Also do a regular search with time filter for recent results
             search_params = {
                 "q": query,
                 "api_key": self.api_key,
-                "num": 10,  # Number of results
-                "hl": "en",  # Language
-                "gl": "us",  # Country
+                "num": 10,
+                "hl": "en",
+                "gl": "us",
             }
+
+            # Add time filter for news-related queries
+            if is_news_query:
+                search_params["tbs"] = "qdr:w"  # Past week
 
             search = GoogleSearch(search_params)
             results = search.get_dict()
 
-            # Format results for the agent
-            formatted_results = []
-
-            # Check for organic results
-            if "organic_results" in results:
-                for i, result in enumerate(results["organic_results"][:5], 1):
-                    title = result.get("title", "No title")
-                    link = result.get("link", "")
-                    snippet = result.get("snippet", "No description")
-                    formatted_results.append(f"{i}. **{title}**\n   URL: {link}\n   {snippet}\n")
-
-            # Check for news results
-            if "news_results" in results:
-                formatted_results.append("\n**Latest News:**\n")
-                for i, news in enumerate(results["news_results"][:3], 1):
-                    title = news.get("title", "No title")
-                    link = news.get("link", "")
-                    source = news.get("source", "Unknown source")
-                    date = news.get("date", "")
-                    formatted_results.append(f"📰 {title} ({source}, {date})\n   {link}\n")
-
-            # Check for answer box
+            # Check for answer box (quick facts)
             if "answer_box" in results:
                 answer = results["answer_box"]
                 if "answer" in answer:
                     formatted_results.insert(0, f"**Quick Answer:** {answer['answer']}\n\n")
                 elif "snippet" in answer:
                     formatted_results.insert(0, f"**Quick Answer:** {answer['snippet']}\n\n")
+
+            # Check for organic results (only if we don't have enough news results)
+            if "organic_results" in results and len(formatted_results) < 5:
+                if formatted_results:
+                    formatted_results.append("\n**Related Web Results:**\n")
+                for i, result in enumerate(results["organic_results"][:5], 1):
+                    title = result.get("title", "No title")
+                    link = result.get("link", "")
+                    snippet = result.get("snippet", "No description")
+                    date = result.get("date", "")
+                    date_str = f" • {date}" if date else ""
+                    formatted_results.append(f"{i}. **{title}**{date_str}\n   {snippet}\n   🔗 {link}\n")
+
+            # Check for top stories in regular search
+            if "top_stories" in results and not is_news_query:
+                formatted_results.append("\n**Top Stories:**\n")
+                for i, story in enumerate(results["top_stories"][:3], 1):
+                    title = story.get("title", "No title")
+                    link = story.get("link", "")
+                    source = story.get("source", "Unknown")
+                    formatted_results.append(f"📰 {title} ({source})\n   🔗 {link}\n")
 
             if formatted_results:
                 return "\n".join(formatted_results)
