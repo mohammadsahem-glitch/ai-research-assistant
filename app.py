@@ -104,18 +104,18 @@ class ExecutionLog(db.Model):
     execution_time_ms = db.Column(db.Integer, nullable=True)
     status = db.Column(db.String(20), nullable=False)  # 'success', 'error', 'timeout'
     error_message = db.Column(db.Text, nullable=True)
-    metadata = db.Column(db.Text, nullable=True)  # JSON string for additional info
+    extra_info = db.Column(db.Text, nullable=True)  # JSON string for additional info
 
 # Global list for in-memory logs (for tools that run before request context)
 execution_logs_memory = []
 
-def log_execution(tool_name, tool_type, input_data, output_data, execution_time_ms, status, error_message=None, metadata=None, user_id=None):
+def log_execution(tool_name, tool_type, input_data, output_data, execution_time_ms, status, error_message=None, extra_info=None, user_id=None):
     """Log a tool execution to the database"""
     try:
         # Truncate long outputs for storage
         input_str = str(input_data)[:5000] if input_data else None
         output_str = str(output_data)[:10000] if output_data else None
-        metadata_str = json.dumps(metadata) if metadata else None
+        extra_info_str = json.dumps(extra_info) if extra_info else None
 
         log_entry = ExecutionLog(
             user_id=user_id,
@@ -126,7 +126,7 @@ def log_execution(tool_name, tool_type, input_data, output_data, execution_time_
             execution_time_ms=execution_time_ms,
             status=status,
             error_message=error_message,
-            metadata=metadata_str
+            extra_info=extra_info_str
         )
         db.session.add(log_entry)
         db.session.commit()
@@ -754,12 +754,12 @@ def get_logs():
         # Format logs for JSON response
         logs_data = []
         for log in logs:
-            metadata = None
-            if log.metadata:
+            extra_info = None
+            if log.extra_info:
                 try:
-                    metadata = json.loads(log.metadata)
+                    extra_info = json.loads(log.extra_info)
                 except:
-                    metadata = log.metadata
+                    extra_info = log.extra_info
 
             logs_data.append({
                 'id': log.id,
@@ -771,7 +771,7 @@ def get_logs():
                 'execution_time_ms': log.execution_time_ms,
                 'status': log.status,
                 'error_message': log.error_message,
-                'metadata': metadata
+                'extra_info': extra_info
             })
 
         # Also include in-memory logs
