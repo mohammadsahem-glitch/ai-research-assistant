@@ -189,10 +189,10 @@ def analyze_image_with_vision(filepath, filename, prompt=None):
             if ocr_text.strip():
                 result = f"[OCR Text Extracted - Vision not available]\n{ocr_text}"
                 log_execution("OCR (Tesseract)", "vision", filename, result[:500], execution_time, "success",
-                             metadata={"fallback": True, "reason": "Vision API not configured"})
+                             extra_info={"fallback": True, "reason": "Vision API not configured"})
                 return result
             log_execution("OCR (Tesseract)", "vision", filename, "No text detected", execution_time, "success",
-                         metadata={"fallback": True, "reason": "Vision API not configured"})
+                         extra_info={"fallback": True, "reason": "Vision API not configured"})
             return "[Image file - No text detected. Vision API not configured for image analysis]"
         except Exception as e:
             execution_time = int((time.time() - start_time) * 1000)
@@ -265,7 +265,7 @@ Be thorough but concise."""
 
         # Log successful Vision API execution
         log_execution("GPT-4 Vision", "vision", filename, vision_analysis[:500], execution_time, "success",
-                     metadata={"model": "gpt-4o-mini", "mime_type": mime_type})
+                     extra_info={"model": "gpt-4o-mini", "mime_type": mime_type})
 
         return vision_analysis
 
@@ -278,7 +278,7 @@ Be thorough but concise."""
             if ocr_text.strip():
                 result = f"[Vision API error - OCR fallback]\n{ocr_text}"
                 log_execution("OCR (Tesseract)", "vision", filename, result[:500], execution_time, "success",
-                             metadata={"fallback": True, "vision_error": str(e)})
+                             extra_info={"fallback": True, "vision_error": str(e)})
                 return result
             log_execution("GPT-4 Vision", "vision", filename, None, execution_time, "error", str(e))
             return f"[Image analysis failed: {str(e)}]"
@@ -378,7 +378,7 @@ class PerplexicaSearchTool(BaseTool):
             if response.status_code != 200:
                 error_msg = f"Perplexica returned status {response.status_code}"
                 log_execution("Perplexica", "search", query, None, execution_time, "error", error_msg,
-                             metadata={"focus_mode": focus_mode, "status_code": response.status_code})
+                             extra_info={"focus_mode": focus_mode, "status_code": response.status_code})
                 return f"Search error: {error_msg}"
 
             result = response.json()
@@ -404,24 +404,24 @@ class PerplexicaSearchTool(BaseTool):
 
             # Log successful execution
             log_execution("Perplexica", "search", query, output[:500], execution_time, "success",
-                         metadata={"focus_mode": focus_mode, "sources_count": sources_count})
+                         extra_info={"focus_mode": focus_mode, "sources_count": sources_count})
 
             return output
 
         except requests.exceptions.Timeout:
             execution_time = int((time.time() - start_time) * 1000)
             log_execution("Perplexica", "search", query, None, execution_time, "timeout",
-                         "Request timed out", metadata={"focus_mode": focus_mode})
+                         "Request timed out", extra_info={"focus_mode": focus_mode})
             return "Search error: Request timed out. Perplexica server may be slow or unavailable."
         except requests.exceptions.ConnectionError:
             execution_time = int((time.time() - start_time) * 1000)
             log_execution("Perplexica", "search", query, None, execution_time, "error",
-                         "Connection error", metadata={"focus_mode": focus_mode})
+                         "Connection error", extra_info={"focus_mode": focus_mode})
             return "Search error: Could not connect to Perplexica. Make sure it's running."
         except Exception as e:
             execution_time = int((time.time() - start_time) * 1000)
             log_execution("Perplexica", "search", query, None, execution_time, "error",
-                         str(e), metadata={"focus_mode": focus_mode})
+                         str(e), extra_info={"focus_mode": focus_mode})
             return f"Search error: {str(e)}"
 
 # Initialize search tool - tries Perplexica first, falls back to SerpAPI
@@ -509,7 +509,7 @@ if not search_tool:
 
                             # Log successful execution
                             log_execution("SerpAPI", "search", query, result_text[:500], execution_time, "success",
-                                         metadata={"results_count": results_count})
+                                         extra_info={"results_count": results_count})
 
                             return result_text
                         except Exception as e:
@@ -1218,7 +1218,32 @@ Guidelines:
             tasks=[task]
         )
 
-        result = crew.kickoff()
+        chat_start_time = time.time()
+        try:
+            result = crew.kickoff()
+            chat_execution_time = int((time.time() - chat_start_time) * 1000)
+
+            # Log successful chat execution
+            log_execution(
+                "CrewAI Agent", "agent",
+                user_message[:500],
+                str(result)[:1000],
+                chat_execution_time,
+                "success",
+                extra_info={"mode": agent_mode, "use_rag": use_rag, "session_id": session_id}
+            )
+        except Exception as agent_error:
+            chat_execution_time = int((time.time() - chat_start_time) * 1000)
+            log_execution(
+                "CrewAI Agent", "agent",
+                user_message[:500],
+                None,
+                chat_execution_time,
+                "error",
+                str(agent_error),
+                extra_info={"mode": agent_mode, "use_rag": use_rag}
+            )
+            raise agent_error
 
         # Add assistant response to database
         assistant_response = str(result)
