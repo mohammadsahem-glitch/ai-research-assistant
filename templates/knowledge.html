@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knowledge Graph - AI Research Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Söhne', 'Segoe UI', 'Roboto', sans-serif;
+            background: #343541;
+            min-height: 100vh;
+            color: #ececf1;
+        }
+
+        .header {
+            background: #202123;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: #19c37d;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1a9d68;
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: #ececf1;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: #202123;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #19c37d;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #8e8ea0;
+        }
+
+        .section {
+            background: #202123;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .entity-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .entity-card {
+            background: #343541;
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .entity-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .entity-type {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .type-person { background: #3b82f6; color: white; }
+        .type-topic { background: #8b5cf6; color: white; }
+        .type-preference { background: #f59e0b; color: white; }
+        .type-skill { background: #10b981; color: white; }
+        .type-goal { background: #ec4899; color: white; }
+        .type-location { background: #06b6d4; color: white; }
+        .type-organization { background: #6366f1; color: white; }
+        .type-fact { background: #64748b; color: white; }
+
+        .entity-name {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .entity-description {
+            font-size: 13px;
+            color: #8e8ea0;
+            margin-bottom: 10px;
+        }
+
+        .entity-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #6b6b7b;
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: transparent;
+            border: none;
+            color: #6b6b7b;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            opacity: 0;
+            transition: all 0.2s;
+        }
+
+        .entity-card:hover .delete-btn {
+            opacity: 1;
+        }
+
+        .delete-btn:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .relations-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .relation-item {
+            background: #343541;
+            border-radius: 8px;
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .relation-source, .relation-target {
+            background: #202123;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .relation-type {
+            color: #19c37d;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .relation-arrow {
+            color: #6b6b7b;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #8e8ea0;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .empty-state-text {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .empty-state-subtext {
+            font-size: 14px;
+            color: #6b6b7b;
+        }
+
+        .add-entity-form {
+            display: none;
+            background: #343541;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .add-entity-form.show {
+            display: block;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            color: #8e8ea0;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: #202123;
+            color: #ececf1;
+            font-size: 14px;
+        }
+
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #19c37d;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: #19c37d;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .filter-tab {
+            padding: 6px 14px;
+            border-radius: 16px;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            color: #ececf1;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .filter-tab:hover, .filter-tab.active {
+            background: #19c37d;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧠 Knowledge Graph</h1>
+        <div class="header-actions">
+            <button class="btn btn-secondary" onclick="toggleAddForm()">➕ Add Entity</button>
+            <button class="btn btn-danger" onclick="clearKnowledge()">🗑️ Clear All</button>
+            <button class="btn btn-secondary" onclick="window.location.href='/'">← Back to Chat</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalEntities">0</div>
+                <div class="stat-label">Total Entities</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalRelations">0</div>
+                <div class="stat-label">Relationships</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="entityTypes">0</div>
+                <div class="stat-label">Entity Types</div>
+            </div>
+        </div>
+
+        <!-- Add Entity Form -->
+        <div class="add-entity-form" id="addEntityForm">
+            <h3 style="margin-bottom: 16px;">Add New Entity</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="entityType">
+                        <option value="fact">Fact</option>
+                        <option value="preference">Preference</option>
+                        <option value="topic">Topic</option>
+                        <option value="skill">Skill</option>
+                        <option value="goal">Goal</option>
+                        <option value="person">Person</option>
+                        <option value="location">Location</option>
+                        <option value="organization">Organization</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="entityName" placeholder="e.g., Python, Coffee, John">
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label>Description (optional)</label>
+                <textarea id="entityDescription" rows="2" placeholder="Additional details..."></textarea>
+            </div>
+            <div style="display: flex; gap: 12px;">
+                <button class="btn btn-primary" onclick="addEntity()">Add Entity</button>
+                <button class="btn btn-secondary" onclick="toggleAddForm()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Entities Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Entities</h2>
+                <div class="filter-tabs" id="filterTabs">
+                    <button class="filter-tab active" data-type="all">All</button>
+                </div>
+            </div>
+            <div id="entitiesContainer">
+                <div class="loading"><div class="spinner"></div></div>
+            </div>
+        </div>
+
+        <!-- Relations Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Relationships</h2>
+            </div>
+            <div id="relationsContainer">
+                <div class="loading"><div class="spinner"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allEntities = [];
+        let allRelations = [];
+        let currentFilter = 'all';
+
+        async function loadKnowledge() {
+            try {
+                const response = await fetch('/api/knowledge');
+                const data = await response.json();
+
+                if (data.success) {
+                    allEntities = data.entities;
+                    allRelations = data.relations;
+
+                    // Update stats
+                    document.getElementById('totalEntities').textContent = data.stats.total_entities;
+                    document.getElementById('totalRelations').textContent = data.stats.total_relations;
+                    document.getElementById('entityTypes').textContent = data.stats.entity_types.length;
+
+                    // Update filter tabs
+                    updateFilterTabs(data.stats.entity_types);
+
+                    // Render entities and relations
+                    renderEntities();
+                    renderRelations();
+                }
+            } catch (error) {
+                console.error('Failed to load knowledge:', error);
+            }
+        }
+
+        function updateFilterTabs(types) {
+            const tabs = document.getElementById('filterTabs');
+            tabs.innerHTML = '<button class="filter-tab active" data-type="all" onclick="filterEntities(\'all\')">All</button>';
+
+            types.forEach(type => {
+                const tab = document.createElement('button');
+                tab.className = 'filter-tab';
+                tab.dataset.type = type;
+                tab.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+                tab.onclick = () => filterEntities(type);
+                tabs.appendChild(tab);
+            });
+        }
+
+        function filterEntities(type) {
+            currentFilter = type;
+
+            // Update active tab
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.type === type);
+            });
+
+            renderEntities();
+        }
+
+        function renderEntities() {
+            const container = document.getElementById('entitiesContainer');
+
+            const filtered = currentFilter === 'all'
+                ? allEntities
+                : allEntities.filter(e => e.type === currentFilter);
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🧠</div>
+                        <div class="empty-state-text">No entities yet</div>
+                        <div class="empty-state-subtext">Start chatting and I'll learn about you!</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `<div class="entity-grid">${filtered.map(entity => `
+                <div class="entity-card">
+                    <button class="delete-btn" onclick="deleteEntity(${entity.id})" title="Delete">✕</button>
+                    <span class="entity-type type-${entity.type}">${entity.type}</span>
+                    <div class="entity-name">${escapeHtml(entity.name)}</div>
+                    ${entity.description ? `<div class="entity-description">${escapeHtml(entity.description)}</div>` : ''}
+                    <div class="entity-meta">
+                        <span>Source: ${entity.source || 'unknown'}</span>
+                        <span>Accessed: ${entity.access_count}x</span>
+                    </div>
+                </div>
+            `).join('')}</div>`;
+        }
+
+        function renderRelations() {
+            const container = document.getElementById('relationsContainer');
+
+            if (allRelations.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔗</div>
+                        <div class="empty-state-text">No relationships yet</div>
+                        <div class="empty-state-subtext">Relationships are discovered as we chat.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `<div class="relations-list">${allRelations.map(rel => `
+                <div class="relation-item">
+                    <span class="relation-source">${escapeHtml(rel.source_name || 'Unknown')}</span>
+                    <span class="relation-type">
+                        <span class="relation-arrow">→</span>
+                        ${rel.relation_type.replace(/_/g, ' ')}
+                        <span class="relation-arrow">→</span>
+                    </span>
+                    <span class="relation-target">${escapeHtml(rel.target_name || 'Unknown')}</span>
+                </div>
+            `).join('')}</div>`;
+        }
+
+        function toggleAddForm() {
+            document.getElementById('addEntityForm').classList.toggle('show');
+        }
+
+        async function addEntity() {
+            const type = document.getElementById('entityType').value;
+            const name = document.getElementById('entityName').value.trim();
+            const description = document.getElementById('entityDescription').value.trim();
+
+            if (!name) {
+                alert('Please enter an entity name');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/knowledge/entity', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type, name, description: description || null })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('entityName').value = '';
+                    document.getElementById('entityDescription').value = '';
+                    toggleAddForm();
+                    loadKnowledge();
+                } else {
+                    alert('Failed to add entity: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error adding entity');
+            }
+        }
+
+        async function deleteEntity(id) {
+            if (!confirm('Delete this entity?')) return;
+
+            try {
+                const response = await fetch(`/api/knowledge/entity/${id}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    loadKnowledge();
+                }
+            } catch (error) {
+                alert('Error deleting entity');
+            }
+        }
+
+        async function clearKnowledge() {
+            if (!confirm('Are you sure you want to clear all knowledge? This cannot be undone.')) return;
+
+            try {
+                const response = await fetch('/api/knowledge/clear', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    loadKnowledge();
+                }
+            } catch (error) {
+                alert('Error clearing knowledge');
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Load on page load
+        loadKnowledge();
+    </script>
+</body>
+</html>

@@ -106,6 +106,38 @@ class ExecutionLog(db.Model):
     error_message = db.Column(db.Text, nullable=True)
     extra_info = db.Column(db.Text, nullable=True)  # JSON string for additional info
 
+# Knowledge Graph Models
+class KnowledgeEntity(db.Model):
+    """Store entities in the knowledge graph (people, topics, preferences, facts)"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    entity_type = db.Column(db.String(50), nullable=False)  # 'person', 'topic', 'preference', 'fact', 'skill', 'goal', 'location'
+    name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    attributes = db.Column(db.Text, nullable=True)  # JSON string for additional attributes
+    confidence = db.Column(db.Float, default=1.0)  # Confidence score 0-1
+    source = db.Column(db.String(100), nullable=True)  # Where this was learned from
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_accessed = db.Column(db.DateTime, default=datetime.utcnow)
+    access_count = db.Column(db.Integer, default=0)
+
+    # Relationships
+    outgoing_relations = db.relationship('KnowledgeRelation', foreign_keys='KnowledgeRelation.source_id', backref='source_entity', lazy=True, cascade='all, delete-orphan')
+    incoming_relations = db.relationship('KnowledgeRelation', foreign_keys='KnowledgeRelation.target_id', backref='target_entity', lazy=True, cascade='all, delete-orphan')
+
+class KnowledgeRelation(db.Model):
+    """Store relationships between entities in the knowledge graph"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    source_id = db.Column(db.Integer, db.ForeignKey('knowledge_entity.id'), nullable=False)
+    target_id = db.Column(db.Integer, db.ForeignKey('knowledge_entity.id'), nullable=False)
+    relation_type = db.Column(db.String(100), nullable=False)  # 'works_at', 'interested_in', 'knows', 'lives_in', 'prefers', etc.
+    description = db.Column(db.Text, nullable=True)
+    strength = db.Column(db.Float, default=1.0)  # Relationship strength 0-1
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # Global list for in-memory logs (for tools that run before request context)
 execution_logs_memory = []
 
@@ -151,6 +183,266 @@ def load_user(user_id):
 # Initialize database
 with app.app_context():
     db.create_all()
+
+# Knowledge Graph Functions
+def extract_entities_from_conversation(user_message: str, assistant_response: str, user_id: int) -> dict:
+    """Use OpenAI to extract entities and relationships from a conversation."""
+    try:
+        openai_api_key = os.environ.get('OPENAI_API_KEY', '')
+        if not openai_api_key:
+            return {"entities": [], "relations": []}
+
+        client = OpenAI(api_key=openai_api_key)
+
+        extraction_prompt = f"""Analyze this conversation and extract knowledge about the USER (not general facts).
+Extract ONLY information that the user reveals about themselves, their preferences, interests, work, relationships, etc.
+
+User message: {user_message}
+Assistant response: {assistant_response}
+
+Return a JSON object with:
+{{
+    "entities": [
+        {{
+            "type": "person|topic|preference|fact|skill|goal|location|organization",
+            "name": "entity name",
+            "description": "brief description",
+            "attributes": {{"key": "value"}}
+        }}
+    ],
+    "relations": [
+        {{
+            "source": "User",
+            "relation": "works_at|interested_in|knows|lives_in|prefers|has_skill|wants|dislikes|uses|studies",
+            "target": "entity name",
+            "description": "optional context"
+        }}
+    ]
+}}
+
+Rules:
+- Only extract information the USER explicitly shares about themselves
+- "User" should always be the source for relations about the user
+- Skip generic conversation that doesn't reveal user information
+- Be conservative - only extract clear, explicit information
+- Return empty arrays if no personal information is found
+
+Return ONLY valid JSON, no other text."""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": extraction_prompt}],
+            temperature=0.1,
+            max_tokens=1000
+        )
+
+        result_text = response.choices[0].message.content.strip()
+        # Clean up the response (remove markdown code blocks if present)
+        if result_text.startswith("```"):
+            result_text = result_text.split("```")[1]
+            if result_text.startswith("json"):
+                result_text = result_text[4:]
+        result_text = result_text.strip()
+
+        return json.loads(result_text)
+    except Exception as e:
+        print(f"[KNOWLEDGE] Entity extraction failed: {str(e)}")
+        return {"entities": [], "relations": []}
+
+def store_entity(user_id: int, entity_type: str, name: str, description: str = None, attributes: dict = None, source: str = "conversation") -> KnowledgeEntity:
+    """Store or update an entity in the knowledge graph."""
+    try:
+        # Check if entity already exists for this user
+        existing = KnowledgeEntity.query.filter_by(
+            user_id=user_id,
+            entity_type=entity_type,
+            name=name
+        ).first()
+
+        if existing:
+            # Update existing entity
+            if description:
+                existing.description = description
+            if attributes:
+                # Merge attributes
+                existing_attrs = json.loads(existing.attributes) if existing.attributes else {}
+                existing_attrs.update(attributes)
+                existing.attributes = json.dumps(existing_attrs)
+            existing.access_count += 1
+            existing.last_accessed = datetime.utcnow()
+            db.session.commit()
+            return existing
+        else:
+            # Create new entity
+            entity = KnowledgeEntity(
+                user_id=user_id,
+                entity_type=entity_type,
+                name=name,
+                description=description,
+                attributes=json.dumps(attributes) if attributes else None,
+                source=source
+            )
+            db.session.add(entity)
+            db.session.commit()
+            return entity
+    except Exception as e:
+        print(f"[KNOWLEDGE] Failed to store entity: {str(e)}")
+        db.session.rollback()
+        return None
+
+def store_relation(user_id: int, source_entity: KnowledgeEntity, target_entity: KnowledgeEntity, relation_type: str, description: str = None) -> KnowledgeRelation:
+    """Store a relationship between two entities."""
+    try:
+        # Check if relation already exists
+        existing = KnowledgeRelation.query.filter_by(
+            user_id=user_id,
+            source_id=source_entity.id,
+            target_id=target_entity.id,
+            relation_type=relation_type
+        ).first()
+
+        if existing:
+            if description:
+                existing.description = description
+            existing.strength = min(existing.strength + 0.1, 1.0)  # Increase strength
+            db.session.commit()
+            return existing
+        else:
+            relation = KnowledgeRelation(
+                user_id=user_id,
+                source_id=source_entity.id,
+                target_id=target_entity.id,
+                relation_type=relation_type,
+                description=description
+            )
+            db.session.add(relation)
+            db.session.commit()
+            return relation
+    except Exception as e:
+        print(f"[KNOWLEDGE] Failed to store relation: {str(e)}")
+        db.session.rollback()
+        return None
+
+def update_knowledge_graph(user_id: int, user_message: str, assistant_response: str):
+    """Update the knowledge graph based on a conversation exchange."""
+    try:
+        # Extract entities and relations
+        extracted = extract_entities_from_conversation(user_message, assistant_response, user_id)
+
+        if not extracted.get("entities") and not extracted.get("relations"):
+            return
+
+        # Ensure "User" entity exists
+        user_entity = store_entity(user_id, "person", "User", "The user of this assistant", source="system")
+
+        # Store extracted entities
+        entity_map = {"User": user_entity}
+        for ent in extracted.get("entities", []):
+            stored = store_entity(
+                user_id=user_id,
+                entity_type=ent.get("type", "topic"),
+                name=ent.get("name"),
+                description=ent.get("description"),
+                attributes=ent.get("attributes"),
+                source="conversation"
+            )
+            if stored:
+                entity_map[ent.get("name")] = stored
+
+        # Store relations
+        for rel in extracted.get("relations", []):
+            source_name = rel.get("source", "User")
+            target_name = rel.get("target")
+
+            # Get or create source entity
+            if source_name not in entity_map:
+                source_ent = store_entity(user_id, "person", source_name, source="conversation")
+                entity_map[source_name] = source_ent
+            else:
+                source_ent = entity_map[source_name]
+
+            # Get or create target entity
+            if target_name not in entity_map:
+                target_ent = store_entity(user_id, "topic", target_name, source="conversation")
+                entity_map[target_name] = target_ent
+            else:
+                target_ent = entity_map[target_name]
+
+            if source_ent and target_ent:
+                store_relation(
+                    user_id=user_id,
+                    source_entity=source_ent,
+                    target_entity=target_ent,
+                    relation_type=rel.get("relation", "related_to"),
+                    description=rel.get("description")
+                )
+
+        print(f"[KNOWLEDGE] Updated graph: {len(extracted.get('entities', []))} entities, {len(extracted.get('relations', []))} relations")
+    except Exception as e:
+        print(f"[KNOWLEDGE] Failed to update knowledge graph: {str(e)}")
+
+def get_user_knowledge_context(user_id: int, query: str = None, limit: int = 20) -> str:
+    """Get relevant knowledge about the user to provide context for responses."""
+    try:
+        # Get user's entities and relations
+        entities = KnowledgeEntity.query.filter_by(user_id=user_id).order_by(
+            KnowledgeEntity.access_count.desc(),
+            KnowledgeEntity.updated_at.desc()
+        ).limit(limit).all()
+
+        if not entities:
+            return ""
+
+        context_parts = ["## What I know about you:"]
+
+        # Group entities by type
+        by_type = {}
+        for ent in entities:
+            if ent.name == "User":
+                continue
+            etype = ent.entity_type
+            if etype not in by_type:
+                by_type[etype] = []
+            by_type[etype].append(ent)
+
+        # Format context
+        type_labels = {
+            "preference": "Your preferences",
+            "interest": "Your interests",
+            "topic": "Topics you've discussed",
+            "skill": "Your skills",
+            "goal": "Your goals",
+            "location": "Places",
+            "organization": "Organizations",
+            "person": "People you've mentioned",
+            "fact": "Facts about you"
+        }
+
+        for etype, ents in by_type.items():
+            label = type_labels.get(etype, etype.title())
+            items = [f"- {e.name}" + (f": {e.description}" if e.description else "") for e in ents[:5]]
+            if items:
+                context_parts.append(f"\n**{label}:**")
+                context_parts.extend(items)
+
+        # Get some key relations
+        relations = KnowledgeRelation.query.filter_by(user_id=user_id).order_by(
+            KnowledgeRelation.strength.desc()
+        ).limit(10).all()
+
+        if relations:
+            context_parts.append("\n**Key relationships:**")
+            for rel in relations:
+                source = rel.source_entity.name if rel.source_entity else "?"
+                target = rel.target_entity.name if rel.target_entity else "?"
+                if source == "User":
+                    source = "You"
+                context_parts.append(f"- {source} {rel.relation_type.replace('_', ' ')} {target}")
+
+        return "\n".join(context_parts) if len(context_parts) > 1 else ""
+    except Exception as e:
+        print(f"[KNOWLEDGE] Failed to get user context: {str(e)}")
+        return ""
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
@@ -438,12 +730,76 @@ class PerplexicaSearchTool(BaseTool):
                          str(e), extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode})
             return f"Search error: {str(e)}"
 
-# Initialize search tool - Perplexica only
+# DuckDuckGo Fallback Search Tool (free, no API key required)
+class DuckDuckGoSearchTool(BaseTool):
+    """Free search tool using DuckDuckGo - no API key required."""
+    name: str = "Web Search"
+    description: str = "Search the web for current information, news, and facts. Use this when you need up-to-date information about any topic."
+    args_schema: Type[BaseModel] = SearchInput
+
+    def _run(self, query: str) -> str:
+        """Execute the search query using DuckDuckGo."""
+        start_time = time.time()
+        try:
+            from duckduckgo_search import DDGS
+
+            # Add current date for news queries
+            search_query = query
+            query_lower = query.lower()
+            current_date = datetime.now()
+            current_year = current_date.year
+            current_month = current_date.strftime("%B %Y")
+
+            # Check if query is asking for recent/current news
+            news_keywords = ['news', 'latest', 'recent', 'today', 'current', 'now', 'update', 'happening']
+            is_news = any(kw in query_lower for kw in news_keywords)
+
+            if is_news and str(current_year) not in query:
+                search_query = f"{query} {current_month}"
+
+            # Perform search
+            with DDGS() as ddgs:
+                if is_news:
+                    # Use news search for news queries
+                    results = list(ddgs.news(search_query, max_results=5))
+                else:
+                    # Use regular text search
+                    results = list(ddgs.text(search_query, max_results=5))
+
+            execution_time = int((time.time() - start_time) * 1000)
+
+            if not results:
+                log_execution("DuckDuckGo", "search", query, "No results", execution_time, "success",
+                             extra_info={"search_engine": "DuckDuckGo", "is_news": is_news})
+                return f"No results found for: {query}"
+
+            # Format results
+            output = []
+            for i, r in enumerate(results, 1):
+                title = r.get('title', 'No title')
+                body = r.get('body', r.get('description', ''))
+                url = r.get('href', r.get('url', r.get('link', '')))
+                output.append(f"{i}. **{title}**\n   {body[:200]}...\n   🔗 {url}")
+
+            result_text = "\n\n".join(output)
+
+            log_execution("DuckDuckGo", "search", query, result_text[:500], execution_time, "success",
+                         extra_info={"search_engine": "DuckDuckGo", "results_count": len(results), "is_news": is_news})
+
+            return result_text
+
+        except Exception as e:
+            execution_time = int((time.time() - start_time) * 1000)
+            log_execution("DuckDuckGo", "search", query, None, execution_time, "error", str(e),
+                         extra_info={"search_engine": "DuckDuckGo"})
+            return f"Search error: {str(e)}"
+
+# Initialize search tool - Perplexica primary, DuckDuckGo fallback
 search_tool = None
 search_tool_error = None
 search_tool_type = None
 
-# Initialize Perplexica
+# Try Perplexica first
 perplexica_url = os.environ.get('PERPLEXICA_URL', '').strip().strip('"').strip("'")
 if perplexica_url:
     print(f"[STARTUP] Initializing Perplexica search tool...")
@@ -480,10 +836,26 @@ if perplexica_url:
         print(f"[WARNING] Perplexica initialization failed: {str(e)}")
         search_tool_error = str(e)
 else:
-    print(f"[WARNING] PERPLEXICA_URL not set. Search functionality disabled.")
+    print(f"[INFO] PERPLEXICA_URL not set. Will use DuckDuckGo fallback.")
+
+# Fall back to DuckDuckGo if Perplexica not available
+if not search_tool:
+    print(f"[STARTUP] Initializing DuckDuckGo search tool (free fallback)...")
+    try:
+        # Test if duckduckgo-search is available
+        from duckduckgo_search import DDGS
+        search_tool = DuckDuckGoSearchTool()
+        search_tool_type = "DuckDuckGo"
+        print(f"[SUCCESS] ✓ DuckDuckGo search tool initialized (no API key required)")
+    except ImportError as e:
+        print(f"[ERROR] DuckDuckGo search not available: {str(e)}")
+        search_tool_error = "DuckDuckGo package not installed"
+    except Exception as e:
+        print(f"[ERROR] DuckDuckGo initialization failed: {str(e)}")
+        search_tool_error = str(e)
 
 if not search_tool:
-    print(f"[WARNING] No search tool available. Set PERPLEXICA_URL environment variable.")
+    print(f"[WARNING] No search tool available. Install duckduckgo-search or set PERPLEXICA_URL.")
 
 # Define the main conversational agent with search capabilities
 # Only include search_tool if it was successfully initialized
@@ -678,6 +1050,120 @@ def architecture():
 @login_required
 def logs():
     return render_template('logs.html')
+
+# Knowledge Graph Routes
+@app.route('/knowledge')
+@login_required
+def knowledge():
+    return render_template('knowledge.html')
+
+@app.route('/api/knowledge')
+@login_required
+def get_knowledge():
+    """Get the user's knowledge graph data"""
+    try:
+        entities = KnowledgeEntity.query.filter_by(user_id=current_user.id).order_by(
+            KnowledgeEntity.access_count.desc()
+        ).all()
+
+        relations = KnowledgeRelation.query.filter_by(user_id=current_user.id).all()
+
+        entities_data = []
+        for ent in entities:
+            attrs = None
+            if ent.attributes:
+                try:
+                    attrs = json.loads(ent.attributes)
+                except:
+                    attrs = ent.attributes
+
+            entities_data.append({
+                'id': ent.id,
+                'type': ent.entity_type,
+                'name': ent.name,
+                'description': ent.description,
+                'attributes': attrs,
+                'confidence': ent.confidence,
+                'source': ent.source,
+                'access_count': ent.access_count,
+                'created_at': ent.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': ent.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            })
+
+        relations_data = []
+        for rel in relations:
+            relations_data.append({
+                'id': rel.id,
+                'source_id': rel.source_id,
+                'source_name': rel.source_entity.name if rel.source_entity else None,
+                'target_id': rel.target_id,
+                'target_name': rel.target_entity.name if rel.target_entity else None,
+                'relation_type': rel.relation_type,
+                'description': rel.description,
+                'strength': rel.strength,
+                'created_at': rel.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            })
+
+        return jsonify({
+            'success': True,
+            'entities': entities_data,
+            'relations': relations_data,
+            'stats': {
+                'total_entities': len(entities_data),
+                'total_relations': len(relations_data),
+                'entity_types': list(set(e['type'] for e in entities_data))
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/knowledge/entity', methods=['POST'])
+@login_required
+def add_entity():
+    """Manually add an entity to the knowledge graph"""
+    try:
+        data = request.json
+        entity = store_entity(
+            user_id=current_user.id,
+            entity_type=data.get('type', 'fact'),
+            name=data.get('name'),
+            description=data.get('description'),
+            attributes=data.get('attributes'),
+            source='manual'
+        )
+        if entity:
+            return jsonify({'success': True, 'entity_id': entity.id})
+        return jsonify({'success': False, 'error': 'Failed to create entity'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/knowledge/entity/<int:entity_id>', methods=['DELETE'])
+@login_required
+def delete_entity(entity_id):
+    """Delete an entity from the knowledge graph"""
+    try:
+        entity = KnowledgeEntity.query.filter_by(id=entity_id, user_id=current_user.id).first()
+        if not entity:
+            return jsonify({'success': False, 'error': 'Entity not found'}), 404
+        db.session.delete(entity)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/knowledge/clear', methods=['POST'])
+@login_required
+def clear_knowledge():
+    """Clear all knowledge graph data for the current user"""
+    try:
+        KnowledgeRelation.query.filter_by(user_id=current_user.id).delete()
+        KnowledgeEntity.query.filter_by(user_id=current_user.id).delete()
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Knowledge graph cleared'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/logs')
 @login_required
@@ -1093,6 +1579,11 @@ def chat():
                     limited_content = doc.content[:2000] + "..." if len(doc.content) > 2000 else doc.content
                     doc_context += f"\n[{doc.filename}]:\n{limited_content}\n"
 
+        # Get knowledge graph context about the user
+        knowledge_context = get_user_knowledge_context(current_user.id, user_message)
+        if knowledge_context:
+            knowledge_context = f"\n\n{knowledge_context}\n"
+
         # Define mode-specific instructions
         mode_instructions = {
             'summarize': """- Provide concise, brief responses
@@ -1120,7 +1611,7 @@ def chat():
 
         # Create intelligent task description
         task_description = f"""{context}Current user message: {user_message}
-{doc_context}
+{doc_context}{knowledge_context}
 
 You are an intelligent conversational AI assistant operating in **{agent_mode.replace('_', ' ').title()} Mode**.
 
@@ -1206,6 +1697,12 @@ Guidelines:
         # Update session timestamp
         session.updated_at = datetime.utcnow()
         db.session.commit()
+
+        # Update knowledge graph with new information from conversation (async-like, non-blocking)
+        try:
+            update_knowledge_graph(current_user.id, user_message, assistant_response)
+        except Exception as kg_error:
+            print(f"[KNOWLEDGE] Non-critical error updating knowledge graph: {str(kg_error)}")
 
         # Format the response
         formatted_result = format_response(assistant_response)
