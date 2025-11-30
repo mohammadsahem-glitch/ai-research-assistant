@@ -392,7 +392,7 @@ class PerplexicaSearchTool(BaseTool):
             if response.status_code != 200:
                 error_msg = f"Perplexica returned status {response.status_code}"
                 log_execution("Perplexica", "search", query, None, execution_time, "error", error_msg,
-                             extra_info={"focus_mode": focus_mode, "status_code": response.status_code})
+                             extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode, "status_code": response.status_code})
                 return f"Search error: {error_msg}"
 
             result = response.json()
@@ -418,24 +418,24 @@ class PerplexicaSearchTool(BaseTool):
 
             # Log successful execution
             log_execution("Perplexica", "search", query, output[:500], execution_time, "success",
-                         extra_info={"focus_mode": focus_mode, "sources_count": sources_count})
+                         extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode, "sources_count": sources_count})
 
             return output
 
         except requests.exceptions.Timeout:
             execution_time = int((time.time() - start_time) * 1000)
             log_execution("Perplexica", "search", query, None, execution_time, "timeout",
-                         "Request timed out", extra_info={"focus_mode": focus_mode})
+                         "Request timed out", extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode})
             return "Search error: Request timed out. Perplexica server may be slow or unavailable."
         except requests.exceptions.ConnectionError:
             execution_time = int((time.time() - start_time) * 1000)
             log_execution("Perplexica", "search", query, None, execution_time, "error",
-                         "Connection error", extra_info={"focus_mode": focus_mode})
+                         "Connection error", extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode})
             return "Search error: Could not connect to Perplexica. Make sure it's running."
         except Exception as e:
             execution_time = int((time.time() - start_time) * 1000)
             log_execution("Perplexica", "search", query, None, execution_time, "error",
-                         str(e), extra_info={"focus_mode": focus_mode})
+                         str(e), extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode})
             return f"Search error: {str(e)}"
 
 # Initialize search tool - tries Perplexica first, falls back to SerpAPI
@@ -541,12 +541,13 @@ if not search_tool:
 
                             # Log successful execution
                             log_execution("SerpAPI", "search", query, result_text[:500], execution_time, "success",
-                                         extra_info={"results_count": results_count})
+                                         extra_info={"search_engine": "SerpAPI (Google)", "results_count": results_count})
 
                             return result_text
                         except Exception as e:
                             execution_time = int((time.time() - start_time) * 1000)
-                            log_execution("SerpAPI", "search", query, None, execution_time, "error", str(e))
+                            log_execution("SerpAPI", "search", query, None, execution_time, "error", str(e),
+                                         extra_info={"search_engine": "SerpAPI (Google)"})
                             return f"Search error: {str(e)}"
 
                 search_tool = SerpAPIFallbackTool(api_key=serp_api_key)
