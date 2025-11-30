@@ -350,6 +350,20 @@ class PerplexicaSearchTool(BaseTool):
             # Determine focus mode based on query
             focus_mode = self._get_focus_mode(query)
 
+            # Add current date context for news/recent queries to get up-to-date results
+            search_query = query
+            query_lower = query.lower()
+            current_date = datetime.now()
+            current_year = current_date.year
+            current_month = current_date.strftime("%B %Y")
+
+            # Check if query is asking for recent/current news
+            news_keywords = ['news', 'latest', 'recent', 'today', 'current', 'now', 'update', 'happening', 'this week', 'this month']
+            if any(kw in query_lower for kw in news_keywords):
+                # Append current date context if not already present
+                if str(current_year) not in query and current_date.strftime("%B") not in query:
+                    search_query = f"{query} {current_month}"
+
             # Build request payload
             payload = {
                 "chatModel": {
@@ -361,7 +375,7 @@ class PerplexicaSearchTool(BaseTool):
                     "model": self.embedding_model_name
                 },
                 "focusMode": focus_mode,
-                "query": query,
+                "query": search_query,
                 "history": []
             }
 
@@ -378,7 +392,7 @@ class PerplexicaSearchTool(BaseTool):
             if response.status_code != 200:
                 error_msg = f"Perplexica returned status {response.status_code}"
                 log_execution("Perplexica", "search", query, None, execution_time, "error", error_msg,
-                             extra_info={"focus_mode": focus_mode, "status_code": response.status_code})
+                             extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode, "status_code": response.status_code})
                 return f"Search error: {error_msg}"
 
             result = response.json()
@@ -404,24 +418,24 @@ class PerplexicaSearchTool(BaseTool):
 
             # Log successful execution
             log_execution("Perplexica", "search", query, output[:500], execution_time, "success",
-                         extra_info={"focus_mode": focus_mode, "sources_count": sources_count})
+                         extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode, "sources_count": sources_count})
 
             return output
 
         except requests.exceptions.Timeout:
             execution_time = int((time.time() - start_time) * 1000)
             log_execution("Perplexica", "search", query, None, execution_time, "timeout",
-                         "Request timed out", extra_info={"focus_mode": focus_mode})
+                         "Request timed out", extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode})
             return "Search error: Request timed out. Perplexica server may be slow or unavailable."
         except requests.exceptions.ConnectionError:
             execution_time = int((time.time() - start_time) * 1000)
             log_execution("Perplexica", "search", query, None, execution_time, "error",
-                         "Connection error", extra_info={"focus_mode": focus_mode})
+                         "Connection error", extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode})
             return "Search error: Could not connect to Perplexica. Make sure it's running."
         except Exception as e:
             execution_time = int((time.time() - start_time) * 1000)
             log_execution("Perplexica", "search", query, None, execution_time, "error",
-                         str(e), extra_info={"focus_mode": focus_mode})
+                         str(e), extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode})
             return f"Search error: {str(e)}"
 
 # Initialize search tool - tries Perplexica first, falls back to SerpAPI
@@ -494,7 +508,25 @@ if not search_tool:
                         start_time = time.time()
                         try:
                             from serpapi import GoogleSearch
-                            search = GoogleSearch({"q": query, "api_key": self.api_key, "num": 10})
+
+                            # Add current date for news queries
+                            search_query = query
+                            query_lower = query.lower()
+                            current_date = datetime.now()
+                            current_year = current_date.year
+                            current_month = current_date.strftime("%B %Y")
+
+                            search_params = {"q": query, "api_key": self.api_key, "num": 10}
+
+                            # Check if query is asking for recent/current news
+                            news_keywords = ['news', 'latest', 'recent', 'today', 'current', 'now', 'update', 'happening']
+                            if any(kw in query_lower for kw in news_keywords):
+                                # Add date to query and use time-based filter (past month)
+                                if str(current_year) not in query:
+                                    search_params["q"] = f"{query} {current_month}"
+                                search_params["tbs"] = "qdr:m"  # Filter to past month
+
+                            search = GoogleSearch(search_params)
                             results = search.get_dict()
                             execution_time = int((time.time() - start_time) * 1000)
 
@@ -509,12 +541,13 @@ if not search_tool:
 
                             # Log successful execution
                             log_execution("SerpAPI", "search", query, result_text[:500], execution_time, "success",
-                                         extra_info={"results_count": results_count})
+                                         extra_info={"search_engine": "SerpAPI (Google)", "results_count": results_count})
 
                             return result_text
                         except Exception as e:
                             execution_time = int((time.time() - start_time) * 1000)
-                            log_execution("SerpAPI", "search", query, None, execution_time, "error", str(e))
+                            log_execution("SerpAPI", "search", query, None, execution_time, "error", str(e),
+                                         extra_info={"search_engine": "SerpAPI (Google)"})
                             return f"Search error: {str(e)}"
 
                 search_tool = SerpAPIFallbackTool(api_key=serp_api_key)
