@@ -4,7 +4,10 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, login_
 from werkzeug.security import generate_password_hash, check_password_hash
 import time
 from crewai import Agent, Task, Crew
-from crewai_tools import SerpApiGoogleSearchTool
+from crewai.tools import BaseTool
+from pydantic import Field
+from typing import Type, Any
+from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 import re
@@ -97,26 +100,129 @@ with app.app_context():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-# Initialize the search tool with API key from environment
-# The tool expects SERPAPI_API_KEY environment variable
+# Custom SerpAPI Search Tool using google-search-results package directly
+# This provides more reliable API key handling than crewai_tools' SerpApiGoogleSearchTool
+
+class SearchInput(BaseModel):
+    """Input schema for the search tool."""
+    query: str = Field(description="The search query to look up on Google")
+
+class CustomSerpApiSearchTool(BaseTool):
+    """Custom search tool that uses SerpAPI directly for more reliable operation."""
+    name: str = "Google Search"
+    description: str = "Search Google for current information, news, and facts. Use this when you need up-to-date information about any topic."
+    args_schema: Type[BaseModel] = SearchInput
+    api_key: str = ""
+
+    def __init__(self, api_key: str = "", **kwargs):
+        super().__init__(**kwargs)
+        self.api_key = api_key
+
+    def _run(self, query: str) -> str:
+        """Execute the search query using SerpAPI."""
+        try:
+            from serpapi import GoogleSearch
+
+            if not self.api_key:
+                return "Error: SerpAPI key not configured"
+
+            search_params = {
+                "q": query,
+                "api_key": self.api_key,
+                "num": 10,  # Number of results
+                "hl": "en",  # Language
+                "gl": "us",  # Country
+            }
+
+            search = GoogleSearch(search_params)
+            results = search.get_dict()
+
+            # Format results for the agent
+            formatted_results = []
+
+            # Check for organic results
+            if "organic_results" in results:
+                for i, result in enumerate(results["organic_results"][:5], 1):
+                    title = result.get("title", "No title")
+                    link = result.get("link", "")
+                    snippet = result.get("snippet", "No description")
+                    formatted_results.append(f"{i}. **{title}**\n   URL: {link}\n   {snippet}\n")
+
+            # Check for news results
+            if "news_results" in results:
+                formatted_results.append("\n**Latest News:**\n")
+                for i, news in enumerate(results["news_results"][:3], 1):
+                    title = news.get("title", "No title")
+                    link = news.get("link", "")
+                    source = news.get("source", "Unknown source")
+                    date = news.get("date", "")
+                    formatted_results.append(f"📰 {title} ({source}, {date})\n   {link}\n")
+
+            # Check for answer box
+            if "answer_box" in results:
+                answer = results["answer_box"]
+                if "answer" in answer:
+                    formatted_results.insert(0, f"**Quick Answer:** {answer['answer']}\n\n")
+                elif "snippet" in answer:
+                    formatted_results.insert(0, f"**Quick Answer:** {answer['snippet']}\n\n")
+
+            if formatted_results:
+                return "\n".join(formatted_results)
+            else:
+                return f"No results found for: {query}"
+
+        except ImportError:
+            return "Error: serpapi package not installed. Please install with: pip install google-search-results"
+        except Exception as e:
+            return f"Search error: {str(e)}"
+
+# Initialize the custom search tool with API key from environment
 search_tool = None
 search_tool_error = None
+serp_api_key_cleaned = None
+
 try:
-    # Disable interactive prompts by setting the API key from environment
     serp_api_key = os.environ.get('SERPAPI_API_KEY')
-    print(f"[STARTUP] Initializing SerpAPI search tool...")
+    print(f"[STARTUP] Initializing Custom SerpAPI search tool...")
+
     if not serp_api_key:
         print("[ERROR] SERPAPI_API_KEY not found in environment variables")
         search_tool_error = "SERPAPI_API_KEY not found"
     else:
         # Strip whitespace and quotes that might be added by Railway
-        serp_api_key = serp_api_key.strip().strip('"').strip("'")
-        # Set the cleaned key back to environment
-        os.environ['SERPAPI_API_KEY'] = serp_api_key
-        print(f"[INFO] Cleaned SERPAPI key length: {len(serp_api_key)}")
-        print(f"[INFO] Attempting to initialize SerpApiGoogleSearchTool...")
-        search_tool = SerpApiGoogleSearchTool()
-        print("[SUCCESS] ✓ SerpAPI search tool initialized successfully")
+        serp_api_key_cleaned = serp_api_key.strip().strip('"').strip("'")
+        print(f"[INFO] Cleaned SERPAPI key length: {len(serp_api_key_cleaned)}")
+        print(f"[INFO] Key preview: {serp_api_key_cleaned[:8]}...{serp_api_key_cleaned[-4:]}")
+
+        # Test the API key with a simple query
+        print(f"[INFO] Testing SerpAPI connection...")
+        try:
+            from serpapi import GoogleSearch
+            test_search = GoogleSearch({
+                "q": "test",
+                "api_key": serp_api_key_cleaned,
+                "num": 1
+            })
+            test_results = test_search.get_dict()
+
+            if "error" in test_results:
+                raise Exception(f"API Error: {test_results['error']}")
+
+            print(f"[SUCCESS] ✓ SerpAPI connection test passed")
+
+            # Create the custom search tool with the validated API key
+            search_tool = CustomSerpApiSearchTool(api_key=serp_api_key_cleaned)
+            print("[SUCCESS] ✓ Custom SerpAPI search tool initialized successfully")
+
+        except ImportError as ie:
+            error_msg = "serpapi package not found - please install google-search-results"
+            print(f"[ERROR] {error_msg}")
+            search_tool_error = error_msg
+        except Exception as test_error:
+            error_msg = f"SerpAPI test failed: {str(test_error)}"
+            print(f"[ERROR] {error_msg}")
+            search_tool_error = error_msg
+
 except Exception as e:
     error_msg = f"Error initializing SerpAPI tool: {str(e)}"
     print(f"[ERROR] {error_msg}")
@@ -542,11 +648,12 @@ def health_check():
     # Show key prefix/suffix to help diagnose issues (safe - doesn't expose full key)
     key_preview = ''
     if serp_key_cleaned:
-        key_preview = f"{serp_key_cleaned[:8]}...{serp_key_cleaned[-8:]}"
+        key_preview = f"{serp_key_cleaned[:8]}...{serp_key_cleaned[-4:]}"
 
     response = {
         'status': 'healthy',
         'search_enabled': search_tool is not None,
+        'search_tool_type': 'CustomSerpApiSearchTool' if search_tool else None,
         'serpapi_configured': bool(serp_key_raw),
         'serpapi_key_length_raw': len(serp_key_raw),
         'serpapi_key_length_cleaned': len(serp_key_cleaned),
