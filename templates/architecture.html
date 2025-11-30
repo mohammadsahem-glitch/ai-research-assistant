@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Architecture - AI Research Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #1f2937;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .back-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 10px 20px;
+            background: white;
+            color: #667eea;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .back-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+        }
+
+        .architecture-card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            color: #667eea;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        /* Architecture Diagram */
+        .diagram-container {
+            overflow-x: auto;
+            padding: 20px 0;
+        }
+
+        .diagram {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            min-width: 900px;
+        }
+
+        .layer {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .layer-label {
+            position: absolute;
+            left: -120px;
+            top: 50%;
+            transform: translateY(-50%) rotate(-90deg);
+            font-weight: 600;
+            color: #6b7280;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .component {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border: 2px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 160px;
+            text-align: center;
+            position: relative;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .component:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            border-color: #667eea;
+        }
+
+        .component.primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: #667eea;
+            color: white;
+        }
+
+        .component.search {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-color: #10b981;
+            color: white;
+        }
+
+        .component.ai {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            border-color: #f59e0b;
+            color: white;
+        }
+
+        .component.storage {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        .component.external {
+            background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+            border-color: #ec4899;
+            color: white;
+        }
+
+        .component-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .component-name {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .component-desc {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+
+        /* Connectors */
+        .connectors {
+            display: flex;
+            justify-content: center;
+            gap: 100px;
+            padding: 10px 0;
+        }
+
+        .connector {
+            width: 2px;
+            height: 30px;
+            background: linear-gradient(180deg, #667eea, #764ba2);
+            position: relative;
+        }
+
+        .connector::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 8px solid #764ba2;
+        }
+
+        .connector-horizontal {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 0;
+        }
+
+        .connector-line {
+            height: 2px;
+            flex: 1;
+            max-width: 100px;
+            background: linear-gradient(90deg, transparent, #667eea, transparent);
+        }
+
+        /* Flow Diagram */
+        .flow-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .flow-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .flow-step {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 15px 20px;
+            min-width: 150px;
+            text-align: center;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .flow-step:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .flow-step.highlight {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .flow-arrow {
+            color: #667eea;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .flow-arrow.down {
+            transform: rotate(90deg);
+        }
+
+        /* Tech Stack Grid */
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .tech-card {
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.2s;
+        }
+
+        .tech-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .tech-card h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .tech-card ul {
+            list-style: none;
+            font-size: 13px;
+            color: #4b5563;
+        }
+
+        .tech-card li {
+            padding: 5px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tech-card li::before {
+            content: '•';
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        /* Environment Variables */
+        .env-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .env-table th {
+            background: #667eea;
+            color: white;
+            padding: 12px 15px;
+            text-align: left;
+        }
+
+        .env-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .env-table tr:hover td {
+            background: #f8fafc;
+        }
+
+        .env-var {
+            font-family: monospace;
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #7c3aed;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge.required {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        .badge.optional {
+            background: #f0fdf4;
+            color: #16a34a;
+        }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 12px;
+            padding: 25px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .feature-card h4 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            color: #1f2937;
+        }
+
+        .feature-card p {
+            font-size: 14px;
+            color: #4b5563;
+            line-height: 1.6;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .back-btn {
+                position: static;
+                margin-bottom: 20px;
+            }
+
+            .diagram {
+                min-width: 100%;
+            }
+
+            .component {
+                min-width: 120px;
+                padding: 15px;
+            }
+
+            .component-icon {
+                font-size: 1.5rem;
+            }
+
+            .flow-step {
+                min-width: 100px;
+                padding: 10px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-btn">← Back to Chat</a>
+
+    <div class="container">
+        <div class="header">
+            <h1>System Architecture</h1>
+            <p>AI Research Assistant - Complete Technical Overview</p>
+        </div>
+
+        <!-- Main Architecture Diagram -->
+        <div class="architecture-card">
+            <h2 class="section-title">System Architecture Overview</h2>
+            <div class="diagram-container">
+                <div class="diagram">
+                    <!-- User Layer -->
+                    <div class="layer">
+                        <div class="component primary">
+                            <div class="component-icon">👤</div>
+                            <div class="component-name">User</div>
+                            <div class="component-desc">Web Browser</div>
+                        </div>
+                    </div>
+
+                    <div class="connectors"><div class="connector"></div></div>
+
+                    <!-- Frontend Layer -->
+                    <div class="layer">
+                        <div class="component">
+                            <div class="component-icon">🖥️</div>
+                            <div class="component-name">Frontend</div>
+                            <div class="component-desc">HTML/CSS/JS</div>
+                        </div>
+                    </div>
+
+                    <div class="connectors"><div class="connector"></div></div>
+
+                    <!-- Backend Layer -->
+                    <div class="layer">
+                        <div class="component primary">
+                            <div class="component-icon">⚙️</div>
+                            <div class="component-name">Flask App</div>
+                            <div class="component-desc">Python Backend</div>
+                        </div>
+                    </div>
+
+                    <div class="connectors">
+                        <div class="connector"></div>
+                        <div class="connector"></div>
+                        <div class="connector"></div>
+                        <div class="connector"></div>
+                    </div>
+
+                    <!-- Service Layer -->
+                    <div class="layer">
+                        <div class="component ai">
+                            <div class="component-icon">🤖</div>
+                            <div class="component-name">CrewAI Agent</div>
+                            <div class="component-desc">AI Orchestration</div>
+                        </div>
+                        <div class="component search">
+                            <div class="component-icon">🔍</div>
+                            <div class="component-name">Perplexica</div>
+                            <div class="component-desc">AI Search (Primary)</div>
+                        </div>
+                        <div class="component search">
+                            <div class="component-icon">🌐</div>
+                            <div class="component-name">SerpAPI</div>
+                            <div class="component-desc">Google Search (Fallback)</div>
+                        </div>
+                        <div class="component ai">
+                            <div class="component-icon">👁️</div>
+                            <div class="component-name">Vision AI</div>
+                            <div class="component-desc">Image Analysis</div>
+                        </div>
+                    </div>
+
+                    <div class="connectors">
+                        <div class="connector"></div>
+                        <div class="connector"></div>
+                    </div>
+
+                    <!-- Data Layer -->
+                    <div class="layer">
+                        <div class="component storage">
+                            <div class="component-icon">🗄️</div>
+                            <div class="component-name">SQLite/PostgreSQL</div>
+                            <div class="component-desc">Database</div>
+                        </div>
+                        <div class="component storage">
+                            <div class="component-icon">📁</div>
+                            <div class="component-name">File Storage</div>
+                            <div class="component-desc">Document Uploads</div>
+                        </div>
+                    </div>
+
+                    <div class="connectors">
+                        <div class="connector"></div>
+                    </div>
+
+                    <!-- External Services -->
+                    <div class="layer">
+                        <div class="component external">
+                            <div class="component-icon">🧠</div>
+                            <div class="component-name">OpenAI API</div>
+                            <div class="component-desc">GPT-4o-mini</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Request Flow -->
+        <div class="architecture-card">
+            <h2 class="section-title">Request Flow</h2>
+            <div class="flow-container">
+                <div class="flow-row">
+                    <div class="flow-step highlight">User sends message</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">Flask /chat endpoint</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">Build context</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">CrewAI Agent</div>
+                </div>
+                <div class="flow-row">
+                    <span class="flow-arrow down">↓</span>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-step">Check if search needed</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">Perplexica / SerpAPI</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">Format results</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step highlight">Return response</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document Processing Flow -->
+        <div class="architecture-card">
+            <h2 class="section-title">Document Processing Flow</h2>
+            <div class="flow-container">
+                <div class="flow-row">
+                    <div class="flow-step highlight">Upload file</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">Validate type</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">Calculate hash</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">Check duplicates</div>
+                </div>
+                <div class="flow-row">
+                    <span class="flow-arrow down">↓</span>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-step">Extract content</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">Vision AI (images)</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">Store in DB</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step highlight">Available for RAG</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Technology Stack -->
+        <div class="architecture-card">
+            <h2 class="section-title">Technology Stack</h2>
+            <div class="tech-grid">
+                <div class="tech-card">
+                    <h4>🔧 Backend</h4>
+                    <ul>
+                        <li>Flask 3.1.2 - Web Framework</li>
+                        <li>Flask-SQLAlchemy - ORM</li>
+                        <li>Flask-Login - Authentication</li>
+                        <li>Gunicorn - WSGI Server</li>
+                    </ul>
+                </div>
+                <div class="tech-card">
+                    <h4>🤖 AI/ML</h4>
+                    <ul>
+                        <li>CrewAI 1.6.1 - Agent Framework</li>
+                        <li>OpenAI GPT-4o-mini - LLM</li>
+                        <li>Vision AI - Image Analysis</li>
+                        <li>Tesseract OCR - Text Extraction</li>
+                    </ul>
+                </div>
+                <div class="tech-card">
+                    <h4>🔍 Search</h4>
+                    <ul>
+                        <li>Perplexica - AI Search (Primary)</li>
+                        <li>SerpAPI - Google Search (Fallback)</li>
+                        <li>Multiple Focus Modes</li>
+                        <li>Citation Support</li>
+                    </ul>
+                </div>
+                <div class="tech-card">
+                    <h4>📄 Document Processing</h4>
+                    <ul>
+                        <li>PyPDF2 - PDF Processing</li>
+                        <li>python-docx - Word Documents</li>
+                        <li>python-pptx - PowerPoint</li>
+                        <li>openpyxl - Excel Files</li>
+                    </ul>
+                </div>
+                <div class="tech-card">
+                    <h4>🗄️ Database</h4>
+                    <ul>
+                        <li>SQLite (Development)</li>
+                        <li>PostgreSQL (Production)</li>
+                        <li>SQLAlchemy ORM</li>
+                        <li>User/Session/Document Models</li>
+                    </ul>
+                </div>
+                <div class="tech-card">
+                    <h4>🎨 Frontend</h4>
+                    <ul>
+                        <li>Vanilla JavaScript</li>
+                        <li>Modern CSS3</li>
+                        <li>Responsive Design</li>
+                        <li>Mobile-First Approach</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Environment Variables -->
+        <div class="architecture-card">
+            <h2 class="section-title">Environment Configuration</h2>
+            <table class="env-table">
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Description</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="env-var">OPENAI_API_KEY</span></td>
+                        <td>OpenAI API key for GPT-4 and Vision capabilities</td>
+                        <td><span class="badge required">Required</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="env-var">PERPLEXICA_URL</span></td>
+                        <td>Perplexica backend URL (e.g., http://localhost:3000)</td>
+                        <td><span class="badge optional">Optional</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="env-var">SERPAPI_API_KEY</span></td>
+                        <td>SerpAPI key for Google Search (fallback)</td>
+                        <td><span class="badge optional">Optional</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="env-var">SECRET_KEY</span></td>
+                        <td>Flask session secret key</td>
+                        <td><span class="badge required">Required</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="env-var">DATABASE_URL</span></td>
+                        <td>PostgreSQL connection string (production)</td>
+                        <td><span class="badge optional">Optional</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="env-var">PERPLEXICA_CHAT_MODEL</span></td>
+                        <td>Chat model for Perplexica (default: gpt-4o-mini)</td>
+                        <td><span class="badge optional">Optional</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Features -->
+        <div class="architecture-card">
+            <h2 class="section-title">Key Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h4>🔐 User Authentication</h4>
+                    <p>Secure login/registration with password hashing using Werkzeug. Session management with Flask-Login. User-specific data isolation.</p>
+                </div>
+                <div class="feature-card">
+                    <h4>🔍 AI-Powered Search</h4>
+                    <p>Perplexica integration with multiple focus modes (web, academic, YouTube, Reddit). Falls back to SerpAPI for Google Search when needed.</p>
+                </div>
+                <div class="feature-card">
+                    <h4>👁️ Vision AI</h4>
+                    <p>GPT-4 Vision for intelligent image analysis. Describes content, extracts text, identifies objects. OCR fallback with Tesseract.</p>
+                </div>
+                <div class="feature-card">
+                    <h4>📚 Document RAG</h4>
+                    <p>Upload and analyze documents (PDF, Word, Excel, PowerPoint, images). Content extraction and indexing for retrieval-augmented generation.</p>
+                </div>
+                <div class="feature-card">
+                    <h4>💬 Multi-Mode Chat</h4>
+                    <p>Four response modes: Summarize (concise), Balanced (default), Verbose (detailed), Deep Thinking (analytical).</p>
+                </div>
+                <div class="feature-card">
+                    <h4>📱 Responsive Design</h4>
+                    <p>Mobile-first design with hamburger menu. Optimized for all screen sizes from phones to desktops.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Database Schema -->
+        <div class="architecture-card">
+            <h2 class="section-title">Database Schema</h2>
+            <div class="tech-grid">
+                <div class="tech-card">
+                    <h4>👤 User</h4>
+                    <ul>
+                        <li>id (Primary Key)</li>
+                        <li>email (Unique)</li>
+                        <li>password_hash</li>
+                        <li>created_at</li>
+                    </ul>
+                </div>
+                <div class="tech-card">
+                    <h4>💬 ChatSession</h4>
+                    <ul>
+                        <li>id (Primary Key)</li>
+                        <li>user_id (Foreign Key)</li>
+                        <li>title</li>
+                        <li>created_at / updated_at</li>
+                    </ul>
+                </div>
+                <div class="tech-card">
+                    <h4>📝 Message</h4>
+                    <ul>
+                        <li>id (Primary Key)</li>
+                        <li>session_id (Foreign Key)</li>
+                        <li>role (user/assistant/system)</li>
+                        <li>content / timestamp</li>
+                    </ul>
+                </div>
+                <div class="tech-card">
+                    <h4>📄 UploadedDocument</h4>
+                    <ul>
+                        <li>id (Primary Key)</li>
+                        <li>user_id (Foreign Key)</li>
+                        <li>filename / file_hash</li>
+                        <li>content / file_type</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

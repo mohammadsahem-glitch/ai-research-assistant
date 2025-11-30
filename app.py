@@ -603,6 +603,11 @@ def logout():
 def home():
     return render_template('index.html')
 
+@app.route('/architecture')
+@login_required
+def architecture():
+    return render_template('architecture.html')
+
 def extract_text_from_file(filepath, filename):
     """Extract text from different file types"""
     file_ext = filename.rsplit('.', 1)[1].lower()
