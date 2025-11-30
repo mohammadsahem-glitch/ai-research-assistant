@@ -23,6 +23,7 @@ from PIL import Image
 import pytesseract
 import base64
 from openai import OpenAI
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -212,187 +213,211 @@ Be thorough but concise."""
         except Exception as ocr_error:
             return f"[Image file - Could not analyze: {str(e)}]"
 
-# Custom SerpAPI Search Tool using google-search-results package directly
-# This provides more reliable API key handling than crewai_tools' SerpApiGoogleSearchTool
+# Perplexica Search Tool - Open source AI-powered search engine
+# GitHub: https://github.com/ItzCrazyKns/Perplexica
 
 class SearchInput(BaseModel):
     """Input schema for the search tool."""
-    query: str = Field(description="The search query to look up on Google")
+    query: str = Field(description="The search query to look up")
 
-class CustomSerpApiSearchTool(BaseTool):
-    """Custom search tool that uses SerpAPI directly for more reliable operation."""
-    name: str = "Google Search"
-    description: str = "Search Google for current information, news, and facts. Use this when you need up-to-date information about any topic."
+class PerplexicaSearchTool(BaseTool):
+    """Search tool that uses Perplexica - an open source AI-powered search engine."""
+    name: str = "Web Search"
+    description: str = "Search the web for current information, news, and facts using AI-powered search. Use this when you need up-to-date information about any topic."
     args_schema: Type[BaseModel] = SearchInput
-    api_key: str = ""
+    backend_url: str = ""
+    chat_model_provider: str = "openai"
+    chat_model_name: str = "gpt-4o-mini"
+    embedding_model_provider: str = "openai"
+    embedding_model_name: str = "text-embedding-3-small"
 
-    def __init__(self, api_key: str = "", **kwargs):
+    def __init__(self, backend_url: str = "", chat_model_provider: str = "openai",
+                 chat_model_name: str = "gpt-4o-mini", embedding_model_provider: str = "openai",
+                 embedding_model_name: str = "text-embedding-3-small", **kwargs):
         super().__init__(**kwargs)
-        self.api_key = api_key
+        self.backend_url = backend_url
+        self.chat_model_provider = chat_model_provider
+        self.chat_model_name = chat_model_name
+        self.embedding_model_provider = embedding_model_provider
+        self.embedding_model_name = embedding_model_name
 
-    def _is_news_query(self, query: str) -> bool:
-        """Detect if the query is asking for news or recent information."""
-        news_keywords = [
-            'news', 'latest', 'recent', 'today', 'current', 'breaking',
-            'update', 'happening', 'now', 'this week', 'yesterday',
-            'announce', 'announced', 'new release', 'just', 'trending'
-        ]
+    def _get_focus_mode(self, query: str) -> str:
+        """Determine the best focus mode based on the query."""
         query_lower = query.lower()
-        return any(keyword in query_lower for keyword in news_keywords)
+
+        # News-related queries
+        if any(kw in query_lower for kw in ['news', 'latest', 'recent', 'today', 'breaking', 'update', 'happening']):
+            return "webSearch"
+
+        # Academic/research queries
+        if any(kw in query_lower for kw in ['research', 'study', 'paper', 'scientific', 'academic', 'journal']):
+            return "academicSearch"
+
+        # Video queries
+        if any(kw in query_lower for kw in ['video', 'youtube', 'watch', 'tutorial video']):
+            return "youtubeSearch"
+
+        # Reddit queries
+        if any(kw in query_lower for kw in ['reddit', 'discussion', 'opinions', 'community']):
+            return "redditSearch"
+
+        # Default to web search
+        return "webSearch"
 
     def _run(self, query: str) -> str:
-        """Execute the search query using SerpAPI."""
+        """Execute the search query using Perplexica."""
         try:
-            from serpapi import GoogleSearch
+            if not self.backend_url:
+                return "Error: Perplexica backend URL not configured"
 
-            if not self.api_key:
-                return "Error: SerpAPI key not configured"
+            # Determine focus mode based on query
+            focus_mode = self._get_focus_mode(query)
 
-            # Detect if this is a news/recent info query
-            is_news_query = self._is_news_query(query)
-
-            formatted_results = []
-
-            # If it's a news query, do a dedicated Google News search first
-            if is_news_query:
-                news_params = {
-                    "q": query,
-                    "api_key": self.api_key,
-                    "tbm": "nws",  # Google News search
-                    "tbs": "qdr:w",  # Past week results
-                    "num": 10,
-                    "hl": "en",
-                    "gl": "us",
-                }
-
-                news_search = GoogleSearch(news_params)
-                news_results = news_search.get_dict()
-
-                if "news_results" in news_results and news_results["news_results"]:
-                    formatted_results.append("**📰 Latest News (Past Week):**\n")
-                    for i, news in enumerate(news_results["news_results"][:6], 1):
-                        title = news.get("title", "No title")
-                        link = news.get("link", "")
-                        source = news.get("source", {})
-                        source_name = source.get("name", "Unknown") if isinstance(source, dict) else str(source)
-                        date = news.get("date", "")
-                        snippet = news.get("snippet", "")
-                        formatted_results.append(
-                            f"{i}. **{title}**\n"
-                            f"   📌 {source_name} • {date}\n"
-                            f"   {snippet}\n"
-                            f"   🔗 {link}\n"
-                        )
-
-            # Also do a regular search with time filter for recent results
-            search_params = {
-                "q": query,
-                "api_key": self.api_key,
-                "num": 10,
-                "hl": "en",
-                "gl": "us",
+            # Build request payload
+            payload = {
+                "chatModel": {
+                    "provider": self.chat_model_provider,
+                    "model": self.chat_model_name
+                },
+                "embeddingModel": {
+                    "provider": self.embedding_model_provider,
+                    "model": self.embedding_model_name
+                },
+                "focusMode": focus_mode,
+                "query": query,
+                "history": []
             }
 
-            # Add time filter for news-related queries
-            if is_news_query:
-                search_params["tbs"] = "qdr:w"  # Past week
+            # Make request to Perplexica API
+            response = requests.post(
+                f"{self.backend_url}/api/search",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=60
+            )
 
-            search = GoogleSearch(search_params)
-            results = search.get_dict()
+            if response.status_code != 200:
+                return f"Search error: Perplexica returned status {response.status_code}"
 
-            # Check for answer box (quick facts)
-            if "answer_box" in results:
-                answer = results["answer_box"]
-                if "answer" in answer:
-                    formatted_results.insert(0, f"**Quick Answer:** {answer['answer']}\n\n")
-                elif "snippet" in answer:
-                    formatted_results.insert(0, f"**Quick Answer:** {answer['snippet']}\n\n")
+            result = response.json()
 
-            # Check for organic results (only if we don't have enough news results)
-            if "organic_results" in results and len(formatted_results) < 5:
-                if formatted_results:
-                    formatted_results.append("\n**Related Web Results:**\n")
-                for i, result in enumerate(results["organic_results"][:5], 1):
-                    title = result.get("title", "No title")
-                    link = result.get("link", "")
-                    snippet = result.get("snippet", "No description")
-                    date = result.get("date", "")
-                    date_str = f" • {date}" if date else ""
-                    formatted_results.append(f"{i}. **{title}**{date_str}\n   {snippet}\n   🔗 {link}\n")
+            # Format the response
+            formatted_output = []
 
-            # Check for top stories in regular search
-            if "top_stories" in results and not is_news_query:
-                formatted_results.append("\n**Top Stories:**\n")
-                for i, story in enumerate(results["top_stories"][:3], 1):
-                    title = story.get("title", "No title")
-                    link = story.get("link", "")
-                    source = story.get("source", "Unknown")
-                    formatted_results.append(f"📰 {title} ({source})\n   🔗 {link}\n")
+            # Get the main answer/message
+            if "message" in result:
+                formatted_output.append(f"**Answer:**\n{result['message']}\n")
 
-            if formatted_results:
-                return "\n".join(formatted_results)
+            # Get sources/citations if available
+            if "sources" in result and result["sources"]:
+                formatted_output.append("\n**Sources:**")
+                for i, source in enumerate(result["sources"][:5], 1):
+                    title = source.get("title", "Unknown")
+                    url = source.get("url", "")
+                    formatted_output.append(f"{i}. [{title}]({url})")
+
+            if formatted_output:
+                return "\n".join(formatted_output)
             else:
                 return f"No results found for: {query}"
 
-        except ImportError:
-            return "Error: serpapi package not installed. Please install with: pip install google-search-results"
+        except requests.exceptions.Timeout:
+            return "Search error: Request timed out. Perplexica server may be slow or unavailable."
+        except requests.exceptions.ConnectionError:
+            return "Search error: Could not connect to Perplexica. Make sure it's running."
         except Exception as e:
             return f"Search error: {str(e)}"
 
-# Initialize the custom search tool with API key from environment
+# Initialize search tool - tries Perplexica first, falls back to SerpAPI
 search_tool = None
 search_tool_error = None
-serp_api_key_cleaned = None
+search_tool_type = None
 
-try:
-    serp_api_key = os.environ.get('SERPAPI_API_KEY')
-    print(f"[STARTUP] Initializing Custom SerpAPI search tool...")
+# Try Perplexica first
+perplexica_url = os.environ.get('PERPLEXICA_URL', '').strip().strip('"').strip("'")
+if perplexica_url:
+    print(f"[STARTUP] Initializing Perplexica search tool...")
+    print(f"[INFO] Perplexica URL: {perplexica_url}")
 
-    if not serp_api_key:
-        print("[ERROR] SERPAPI_API_KEY not found in environment variables")
-        search_tool_error = "SERPAPI_API_KEY not found"
-    else:
-        # Strip whitespace and quotes that might be added by Railway
-        serp_api_key_cleaned = serp_api_key.strip().strip('"').strip("'")
-        print(f"[INFO] Cleaned SERPAPI key length: {len(serp_api_key_cleaned)}")
-        print(f"[INFO] Key preview: {serp_api_key_cleaned[:8]}...{serp_api_key_cleaned[-4:]}")
+    # Get model configuration from environment
+    chat_provider = os.environ.get('PERPLEXICA_CHAT_PROVIDER', 'openai')
+    chat_model = os.environ.get('PERPLEXICA_CHAT_MODEL', 'gpt-4o-mini')
+    embed_provider = os.environ.get('PERPLEXICA_EMBED_PROVIDER', 'openai')
+    embed_model = os.environ.get('PERPLEXICA_EMBED_MODEL', 'text-embedding-3-small')
 
-        # Test the API key with a simple query
-        print(f"[INFO] Testing SerpAPI connection...")
+    try:
+        # Test connection to Perplexica
+        test_response = requests.get(f"{perplexica_url}/api", timeout=10)
+        if test_response.status_code == 200:
+            search_tool = PerplexicaSearchTool(
+                backend_url=perplexica_url,
+                chat_model_provider=chat_provider,
+                chat_model_name=chat_model,
+                embedding_model_provider=embed_provider,
+                embedding_model_name=embed_model
+            )
+            search_tool_type = "Perplexica"
+            print(f"[SUCCESS] ✓ Perplexica search tool initialized")
+            print(f"[INFO] Chat model: {chat_provider}/{chat_model}")
+            print(f"[INFO] Embedding model: {embed_provider}/{embed_model}")
+        else:
+            print(f"[WARNING] Perplexica returned status {test_response.status_code}")
+            search_tool_error = f"Perplexica returned status {test_response.status_code}"
+    except requests.exceptions.ConnectionError:
+        print(f"[WARNING] Could not connect to Perplexica at {perplexica_url}")
+        search_tool_error = "Could not connect to Perplexica"
+    except Exception as e:
+        print(f"[WARNING] Perplexica initialization failed: {str(e)}")
+        search_tool_error = str(e)
+
+# Fall back to SerpAPI if Perplexica not available
+if not search_tool:
+    serp_api_key = os.environ.get('SERPAPI_API_KEY', '').strip().strip('"').strip("'")
+    if serp_api_key:
+        print(f"[STARTUP] Falling back to SerpAPI search tool...")
         try:
             from serpapi import GoogleSearch
-            test_search = GoogleSearch({
-                "q": "test",
-                "api_key": serp_api_key_cleaned,
-                "num": 1
-            })
+
+            # Test the API key
+            test_search = GoogleSearch({"q": "test", "api_key": serp_api_key, "num": 1})
             test_results = test_search.get_dict()
 
-            if "error" in test_results:
-                raise Exception(f"API Error: {test_results['error']}")
+            if "error" not in test_results:
+                # Create a simple SerpAPI tool as fallback
+                class SerpAPIFallbackTool(BaseTool):
+                    name: str = "Google Search"
+                    description: str = "Search Google for information"
+                    args_schema: Type[BaseModel] = SearchInput
+                    api_key: str = ""
 
-            print(f"[SUCCESS] ✓ SerpAPI connection test passed")
+                    def __init__(self, api_key: str = "", **kwargs):
+                        super().__init__(**kwargs)
+                        self.api_key = api_key
 
-            # Create the custom search tool with the validated API key
-            search_tool = CustomSerpApiSearchTool(api_key=serp_api_key_cleaned)
-            print("[SUCCESS] ✓ Custom SerpAPI search tool initialized successfully")
+                    def _run(self, query: str) -> str:
+                        from serpapi import GoogleSearch
+                        search = GoogleSearch({"q": query, "api_key": self.api_key, "num": 10})
+                        results = search.get_dict()
+                        output = []
+                        if "organic_results" in results:
+                            for i, r in enumerate(results["organic_results"][:5], 1):
+                                output.append(f"{i}. **{r.get('title', 'No title')}**\n   {r.get('snippet', '')}\n   🔗 {r.get('link', '')}")
+                        return "\n".join(output) if output else f"No results for: {query}"
 
-        except ImportError as ie:
-            error_msg = "serpapi package not found - please install google-search-results"
-            print(f"[ERROR] {error_msg}")
-            search_tool_error = error_msg
-        except Exception as test_error:
-            error_msg = f"SerpAPI test failed: {str(test_error)}"
-            print(f"[ERROR] {error_msg}")
-            search_tool_error = error_msg
+                search_tool = SerpAPIFallbackTool(api_key=serp_api_key)
+                search_tool_type = "SerpAPI"
+                search_tool_error = None
+                print(f"[SUCCESS] ✓ SerpAPI fallback initialized")
+            else:
+                search_tool_error = f"SerpAPI error: {test_results.get('error')}"
+                print(f"[ERROR] {search_tool_error}")
+        except Exception as e:
+            if not search_tool_error:
+                search_tool_error = f"SerpAPI failed: {str(e)}"
+            print(f"[ERROR] {search_tool_error}")
 
-except Exception as e:
-    error_msg = f"Error initializing SerpAPI tool: {str(e)}"
-    print(f"[ERROR] {error_msg}")
-    import traceback
-    print(f"[ERROR] Full traceback:\n{traceback.format_exc()}")
-    search_tool_error = str(e)
-    search_tool = None
+if not search_tool:
+    print(f"[WARNING] No search tool available. Set PERPLEXICA_URL or SERPAPI_API_KEY")
 
 # Define the main conversational agent with search capabilities
 # Only include search_tool if it was successfully initialized
@@ -803,22 +828,16 @@ def delete_session(session_id):
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint to verify configuration"""
+    perplexica_url = os.environ.get('PERPLEXICA_URL', '')
     serp_key_raw = os.environ.get('SERPAPI_API_KEY', '')
-    serp_key_cleaned = serp_key_raw.strip().strip('"').strip("'") if serp_key_raw else ''
-
-    # Show key prefix/suffix to help diagnose issues (safe - doesn't expose full key)
-    key_preview = ''
-    if serp_key_cleaned:
-        key_preview = f"{serp_key_cleaned[:8]}...{serp_key_cleaned[-4:]}"
 
     response = {
         'status': 'healthy',
         'search_enabled': search_tool is not None,
-        'search_tool_type': 'CustomSerpApiSearchTool' if search_tool else None,
+        'search_tool_type': search_tool_type,
+        'perplexica_configured': bool(perplexica_url),
+        'perplexica_url': perplexica_url if perplexica_url else None,
         'serpapi_configured': bool(serp_key_raw),
-        'serpapi_key_length_raw': len(serp_key_raw),
-        'serpapi_key_length_cleaned': len(serp_key_cleaned),
-        'serpapi_key_preview': key_preview,
         'vision_enabled': vision_enabled,
         'openai_configured': bool(os.environ.get('OPENAI_API_KEY'))
     }
