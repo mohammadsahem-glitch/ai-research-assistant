@@ -21,6 +21,8 @@ from pptx import Presentation
 from openpyxl import load_workbook
 from PIL import Image
 import pytesseract
+import base64
+from openai import OpenAI
 
 # Load environment variables
 load_dotenv()
@@ -39,7 +41,7 @@ app.config['ALLOWED_EXTENSIONS'] = {
     'doc', 'docx',  # Word
     'ppt', 'pptx',  # PowerPoint
     'xls', 'xlsx',  # Excel
-    'png', 'jpg', 'jpeg', 'gif', 'bmp'  # Images
+    'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'  # Images (with Vision AI support)
 }
 
 db = SQLAlchemy(app)
@@ -99,6 +101,116 @@ with app.app_context():
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# Initialize OpenAI client for vision capabilities
+openai_client = None
+vision_enabled = False
+vision_error = None
+
+try:
+    openai_api_key = os.environ.get('OPENAI_API_KEY')
+    if openai_api_key:
+        openai_client = OpenAI(api_key=openai_api_key)
+        vision_enabled = True
+        print("[SUCCESS] ✓ OpenAI Vision capability initialized")
+    else:
+        print("[WARNING] OPENAI_API_KEY not found - Vision capability disabled")
+        vision_error = "OPENAI_API_KEY not configured"
+except Exception as e:
+    print(f"[ERROR] Failed to initialize OpenAI client: {str(e)}")
+    vision_error = str(e)
+
+def analyze_image_with_vision(filepath, filename, prompt=None):
+    """
+    Analyze an image using OpenAI's GPT-4 Vision API.
+    Returns a detailed description of the image content.
+    """
+    if not openai_client:
+        # Fallback to OCR if vision is not available
+        try:
+            image = Image.open(filepath)
+            ocr_text = pytesseract.image_to_string(image)
+            if ocr_text.strip():
+                return f"[OCR Text Extracted - Vision not available]\n{ocr_text}"
+            return "[Image file - No text detected. Vision API not configured for image analysis]"
+        except Exception as e:
+            return f"[Image file - Could not process: {str(e)}]"
+
+    try:
+        # Read and encode the image
+        with open(filepath, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+
+        # Determine the image type
+        file_ext = filename.rsplit('.', 1)[1].lower()
+        mime_types = {
+            'png': 'image/png',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'gif': 'image/gif',
+            'bmp': 'image/bmp',
+            'webp': 'image/webp'
+        }
+        mime_type = mime_types.get(file_ext, 'image/jpeg')
+
+        # Default prompt for image analysis
+        if not prompt:
+            prompt = """Analyze this image in detail. Provide:
+1. A comprehensive description of what you see
+2. Any text visible in the image (transcribe it)
+3. Key objects, people, or elements
+4. Colors, layout, and composition
+5. Any relevant context or meaning
+
+Be thorough but concise."""
+
+        # Call OpenAI Vision API
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",  # Using gpt-4o-mini for cost efficiency, supports vision
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{base64_image}",
+                                "detail": "high"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=1500
+        )
+
+        vision_analysis = response.choices[0].message.content
+
+        # Also try OCR for any text that might be in the image
+        try:
+            image = Image.open(filepath)
+            ocr_text = pytesseract.image_to_string(image)
+            if ocr_text.strip():
+                vision_analysis += f"\n\n[OCR Extracted Text]:\n{ocr_text.strip()}"
+        except:
+            pass  # OCR is optional, don't fail if it doesn't work
+
+        return vision_analysis
+
+    except Exception as e:
+        # Fallback to OCR on error
+        try:
+            image = Image.open(filepath)
+            ocr_text = pytesseract.image_to_string(image)
+            if ocr_text.strip():
+                return f"[Vision API error - OCR fallback]\n{ocr_text}"
+            return f"[Image analysis failed: {str(e)}]"
+        except Exception as ocr_error:
+            return f"[Image file - Could not analyze: {str(e)}]"
 
 # Custom SerpAPI Search Tool using google-search-results package directly
 # This provides more reliable API key handling than crewai_tools' SerpApiGoogleSearchTool
@@ -507,11 +619,9 @@ def extract_text_from_file(filepath, filename):
                 text += row_text + "\n"
         return text
 
-    elif file_ext in ['png', 'jpg', 'jpeg', 'gif', 'bmp']:
-        # Extract text from images using OCR
-        image = Image.open(filepath)
-        text = pytesseract.image_to_string(image)
-        return text
+    elif file_ext in ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp']:
+        # Analyze images using Vision AI (with OCR fallback)
+        return analyze_image_with_vision(filepath, filename)
 
     else:
         # Read text files (txt, md)
@@ -552,16 +662,16 @@ def upload_file():
                     'char_count': len(existing_doc.content)
                 })
 
-            # Extract text from file
+            # Extract text/content from file (uses Vision AI for images)
             try:
                 content = extract_text_from_file(filepath, filename)
-            except Exception as ocr_error:
-                # If OCR fails (e.g., tesseract not installed), just note it
+            except Exception as extract_error:
+                # Handle extraction errors gracefully
                 file_ext = filename.rsplit('.', 1)[1].lower()
-                if file_ext in ['png', 'jpg', 'jpeg', 'gif', 'bmp']:
-                    content = f"[Image file - OCR not available on this server. Install Tesseract-OCR for text extraction]"
+                if file_ext in ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp']:
+                    content = f"[Image file - Analysis not available: {str(extract_error)}]"
                 else:
-                    raise ocr_error
+                    raise extract_error
 
             file_type = filename.rsplit('.', 1)[1].lower()
 
@@ -708,10 +818,14 @@ def health_check():
         'serpapi_configured': bool(serp_key_raw),
         'serpapi_key_length_raw': len(serp_key_raw),
         'serpapi_key_length_cleaned': len(serp_key_cleaned),
-        'serpapi_key_preview': key_preview
+        'serpapi_key_preview': key_preview,
+        'vision_enabled': vision_enabled,
+        'openai_configured': bool(os.environ.get('OPENAI_API_KEY'))
     }
     if search_tool_error:
         response['search_error'] = search_tool_error
+    if vision_error:
+        response['vision_error'] = vision_error
     return jsonify(response)
 
 @app.route('/chat', methods=['POST'])
