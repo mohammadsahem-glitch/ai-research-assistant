@@ -730,12 +730,76 @@ class PerplexicaSearchTool(BaseTool):
                          str(e), extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode})
             return f"Search error: {str(e)}"
 
-# Initialize search tool - Perplexica only
+# DuckDuckGo Fallback Search Tool (free, no API key required)
+class DuckDuckGoSearchTool(BaseTool):
+    """Free search tool using DuckDuckGo - no API key required."""
+    name: str = "Web Search"
+    description: str = "Search the web for current information, news, and facts. Use this when you need up-to-date information about any topic."
+    args_schema: Type[BaseModel] = SearchInput
+
+    def _run(self, query: str) -> str:
+        """Execute the search query using DuckDuckGo."""
+        start_time = time.time()
+        try:
+            from duckduckgo_search import DDGS
+
+            # Add current date for news queries
+            search_query = query
+            query_lower = query.lower()
+            current_date = datetime.now()
+            current_year = current_date.year
+            current_month = current_date.strftime("%B %Y")
+
+            # Check if query is asking for recent/current news
+            news_keywords = ['news', 'latest', 'recent', 'today', 'current', 'now', 'update', 'happening']
+            is_news = any(kw in query_lower for kw in news_keywords)
+
+            if is_news and str(current_year) not in query:
+                search_query = f"{query} {current_month}"
+
+            # Perform search
+            with DDGS() as ddgs:
+                if is_news:
+                    # Use news search for news queries
+                    results = list(ddgs.news(search_query, max_results=5))
+                else:
+                    # Use regular text search
+                    results = list(ddgs.text(search_query, max_results=5))
+
+            execution_time = int((time.time() - start_time) * 1000)
+
+            if not results:
+                log_execution("DuckDuckGo", "search", query, "No results", execution_time, "success",
+                             extra_info={"search_engine": "DuckDuckGo", "is_news": is_news})
+                return f"No results found for: {query}"
+
+            # Format results
+            output = []
+            for i, r in enumerate(results, 1):
+                title = r.get('title', 'No title')
+                body = r.get('body', r.get('description', ''))
+                url = r.get('href', r.get('url', r.get('link', '')))
+                output.append(f"{i}. **{title}**\n   {body[:200]}...\n   🔗 {url}")
+
+            result_text = "\n\n".join(output)
+
+            log_execution("DuckDuckGo", "search", query, result_text[:500], execution_time, "success",
+                         extra_info={"search_engine": "DuckDuckGo", "results_count": len(results), "is_news": is_news})
+
+            return result_text
+
+        except Exception as e:
+            execution_time = int((time.time() - start_time) * 1000)
+            log_execution("DuckDuckGo", "search", query, None, execution_time, "error", str(e),
+                         extra_info={"search_engine": "DuckDuckGo"})
+            return f"Search error: {str(e)}"
+
+# Initialize search tool - Perplexica primary, DuckDuckGo fallback
 search_tool = None
 search_tool_error = None
 search_tool_type = None
 
-# Initialize Perplexica
+# Try Perplexica first
 perplexica_url = os.environ.get('PERPLEXICA_URL', '').strip().strip('"').strip("'")
 if perplexica_url:
     print(f"[STARTUP] Initializing Perplexica search tool...")
@@ -772,10 +836,26 @@ if perplexica_url:
         print(f"[WARNING] Perplexica initialization failed: {str(e)}")
         search_tool_error = str(e)
 else:
-    print(f"[WARNING] PERPLEXICA_URL not set. Search functionality disabled.")
+    print(f"[INFO] PERPLEXICA_URL not set. Will use DuckDuckGo fallback.")
+
+# Fall back to DuckDuckGo if Perplexica not available
+if not search_tool:
+    print(f"[STARTUP] Initializing DuckDuckGo search tool (free fallback)...")
+    try:
+        # Test if duckduckgo-search is available
+        from duckduckgo_search import DDGS
+        search_tool = DuckDuckGoSearchTool()
+        search_tool_type = "DuckDuckGo"
+        print(f"[SUCCESS] ✓ DuckDuckGo search tool initialized (no API key required)")
+    except ImportError as e:
+        print(f"[ERROR] DuckDuckGo search not available: {str(e)}")
+        search_tool_error = "DuckDuckGo package not installed"
+    except Exception as e:
+        print(f"[ERROR] DuckDuckGo initialization failed: {str(e)}")
+        search_tool_error = str(e)
 
 if not search_tool:
-    print(f"[WARNING] No search tool available. Set PERPLEXICA_URL environment variable.")
+    print(f"[WARNING] No search tool available. Install duckduckgo-search or set PERPLEXICA_URL.")
 
 # Define the main conversational agent with search capabilities
 # Only include search_tool if it was successfully initialized
