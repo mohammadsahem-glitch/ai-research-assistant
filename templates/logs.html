@@ -543,7 +543,7 @@
             const statusClass = log.status;
             const typeClass = log.tool_type || 'search';
 
-            const metadata = log.metadata || {};
+            const metadata = log.extra_info || {};
             const metadataHtml = Object.keys(metadata).length > 0 ? `
                 <div class="detail-section">
                     <div class="detail-label">Metadata</div>
