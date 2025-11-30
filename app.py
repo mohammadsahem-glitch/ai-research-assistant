@@ -350,6 +350,20 @@ class PerplexicaSearchTool(BaseTool):
             # Determine focus mode based on query
             focus_mode = self._get_focus_mode(query)
 
+            # Add current date context for news/recent queries to get up-to-date results
+            search_query = query
+            query_lower = query.lower()
+            current_date = datetime.now()
+            current_year = current_date.year
+            current_month = current_date.strftime("%B %Y")
+
+            # Check if query is asking for recent/current news
+            news_keywords = ['news', 'latest', 'recent', 'today', 'current', 'now', 'update', 'happening', 'this week', 'this month']
+            if any(kw in query_lower for kw in news_keywords):
+                # Append current date context if not already present
+                if str(current_year) not in query and current_date.strftime("%B") not in query:
+                    search_query = f"{query} {current_month}"
+
             # Build request payload
             payload = {
                 "chatModel": {
@@ -361,7 +375,7 @@ class PerplexicaSearchTool(BaseTool):
                     "model": self.embedding_model_name
                 },
                 "focusMode": focus_mode,
-                "query": query,
+                "query": search_query,
                 "history": []
             }
 
@@ -494,7 +508,25 @@ if not search_tool:
                         start_time = time.time()
                         try:
                             from serpapi import GoogleSearch
-                            search = GoogleSearch({"q": query, "api_key": self.api_key, "num": 10})
+
+                            # Add current date for news queries
+                            search_query = query
+                            query_lower = query.lower()
+                            current_date = datetime.now()
+                            current_year = current_date.year
+                            current_month = current_date.strftime("%B %Y")
+
+                            search_params = {"q": query, "api_key": self.api_key, "num": 10}
+
+                            # Check if query is asking for recent/current news
+                            news_keywords = ['news', 'latest', 'recent', 'today', 'current', 'now', 'update', 'happening']
+                            if any(kw in query_lower for kw in news_keywords):
+                                # Add date to query and use time-based filter (past month)
+                                if str(current_year) not in query:
+                                    search_params["q"] = f"{query} {current_month}"
+                                search_params["tbs"] = "qdr:m"  # Filter to past month
+
+                            search = GoogleSearch(search_params)
                             results = search.get_dict()
                             execution_time = int((time.time() - start_time) * 1000)
 
