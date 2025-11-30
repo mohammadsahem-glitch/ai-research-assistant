@@ -438,12 +438,12 @@ class PerplexicaSearchTool(BaseTool):
                          str(e), extra_info={"search_engine": "Perplexica", "focus_mode": focus_mode})
             return f"Search error: {str(e)}"
 
-# Initialize search tool - tries Perplexica first, falls back to SerpAPI
+# Initialize search tool - Perplexica only
 search_tool = None
 search_tool_error = None
 search_tool_type = None
 
-# Try Perplexica first
+# Initialize Perplexica
 perplexica_url = os.environ.get('PERPLEXICA_URL', '').strip().strip('"').strip("'")
 if perplexica_url:
     print(f"[STARTUP] Initializing Perplexica search tool...")
@@ -479,91 +479,11 @@ if perplexica_url:
     except Exception as e:
         print(f"[WARNING] Perplexica initialization failed: {str(e)}")
         search_tool_error = str(e)
-
-# Fall back to SerpAPI if Perplexica not available
-if not search_tool:
-    serp_api_key = os.environ.get('SERPAPI_API_KEY', '').strip().strip('"').strip("'")
-    if serp_api_key:
-        print(f"[STARTUP] Falling back to SerpAPI search tool...")
-        try:
-            from serpapi import GoogleSearch
-
-            # Test the API key
-            test_search = GoogleSearch({"q": "test", "api_key": serp_api_key, "num": 1})
-            test_results = test_search.get_dict()
-
-            if "error" not in test_results:
-                # Create a simple SerpAPI tool as fallback
-                class SerpAPIFallbackTool(BaseTool):
-                    name: str = "Google Search"
-                    description: str = "Search Google for information"
-                    args_schema: Type[BaseModel] = SearchInput
-                    api_key: str = ""
-
-                    def __init__(self, api_key: str = "", **kwargs):
-                        super().__init__(**kwargs)
-                        self.api_key = api_key
-
-                    def _run(self, query: str) -> str:
-                        start_time = time.time()
-                        try:
-                            from serpapi import GoogleSearch
-
-                            # Add current date for news queries
-                            search_query = query
-                            query_lower = query.lower()
-                            current_date = datetime.now()
-                            current_year = current_date.year
-                            current_month = current_date.strftime("%B %Y")
-
-                            search_params = {"q": query, "api_key": self.api_key, "num": 10}
-
-                            # Check if query is asking for recent/current news
-                            news_keywords = ['news', 'latest', 'recent', 'today', 'current', 'now', 'update', 'happening']
-                            if any(kw in query_lower for kw in news_keywords):
-                                # Add date to query and use time-based filter (past month)
-                                if str(current_year) not in query:
-                                    search_params["q"] = f"{query} {current_month}"
-                                search_params["tbs"] = "qdr:m"  # Filter to past month
-
-                            search = GoogleSearch(search_params)
-                            results = search.get_dict()
-                            execution_time = int((time.time() - start_time) * 1000)
-
-                            output = []
-                            results_count = 0
-                            if "organic_results" in results:
-                                results_count = len(results["organic_results"])
-                                for i, r in enumerate(results["organic_results"][:5], 1):
-                                    output.append(f"{i}. **{r.get('title', 'No title')}**\n   {r.get('snippet', '')}\n   🔗 {r.get('link', '')}")
-
-                            result_text = "\n".join(output) if output else f"No results for: {query}"
-
-                            # Log successful execution
-                            log_execution("SerpAPI", "search", query, result_text[:500], execution_time, "success",
-                                         extra_info={"search_engine": "SerpAPI (Google)", "results_count": results_count})
-
-                            return result_text
-                        except Exception as e:
-                            execution_time = int((time.time() - start_time) * 1000)
-                            log_execution("SerpAPI", "search", query, None, execution_time, "error", str(e),
-                                         extra_info={"search_engine": "SerpAPI (Google)"})
-                            return f"Search error: {str(e)}"
-
-                search_tool = SerpAPIFallbackTool(api_key=serp_api_key)
-                search_tool_type = "SerpAPI"
-                search_tool_error = None
-                print(f"[SUCCESS] ✓ SerpAPI fallback initialized")
-            else:
-                search_tool_error = f"SerpAPI error: {test_results.get('error')}"
-                print(f"[ERROR] {search_tool_error}")
-        except Exception as e:
-            if not search_tool_error:
-                search_tool_error = f"SerpAPI failed: {str(e)}"
-            print(f"[ERROR] {search_tool_error}")
+else:
+    print(f"[WARNING] PERPLEXICA_URL not set. Search functionality disabled.")
 
 if not search_tool:
-    print(f"[WARNING] No search tool available. Set PERPLEXICA_URL or SERPAPI_API_KEY")
+    print(f"[WARNING] No search tool available. Set PERPLEXICA_URL environment variable.")
 
 # Define the main conversational agent with search capabilities
 # Only include search_tool if it was successfully initialized
