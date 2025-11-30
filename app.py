@@ -92,6 +92,58 @@ class UploadedDocument(db.Model):
     file_type = db.Column(db.String(20), nullable=False)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class ExecutionLog(db.Model):
+    """Track tool executions for debugging and monitoring"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    tool_name = db.Column(db.String(100), nullable=False)
+    tool_type = db.Column(db.String(50), nullable=False)  # 'search', 'vision', 'document', 'agent'
+    input_data = db.Column(db.Text, nullable=True)
+    output_data = db.Column(db.Text, nullable=True)
+    execution_time_ms = db.Column(db.Integer, nullable=True)
+    status = db.Column(db.String(20), nullable=False)  # 'success', 'error', 'timeout'
+    error_message = db.Column(db.Text, nullable=True)
+    metadata = db.Column(db.Text, nullable=True)  # JSON string for additional info
+
+# Global list for in-memory logs (for tools that run before request context)
+execution_logs_memory = []
+
+def log_execution(tool_name, tool_type, input_data, output_data, execution_time_ms, status, error_message=None, metadata=None, user_id=None):
+    """Log a tool execution to the database"""
+    try:
+        # Truncate long outputs for storage
+        input_str = str(input_data)[:5000] if input_data else None
+        output_str = str(output_data)[:10000] if output_data else None
+        metadata_str = json.dumps(metadata) if metadata else None
+
+        log_entry = ExecutionLog(
+            user_id=user_id,
+            tool_name=tool_name,
+            tool_type=tool_type,
+            input_data=input_str,
+            output_data=output_str,
+            execution_time_ms=execution_time_ms,
+            status=status,
+            error_message=error_message,
+            metadata=metadata_str
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+    except Exception as e:
+        # If DB logging fails, store in memory
+        execution_logs_memory.append({
+            'timestamp': datetime.utcnow().isoformat(),
+            'tool_name': tool_name,
+            'tool_type': tool_type,
+            'input_data': str(input_data)[:500] if input_data else None,
+            'output_data': str(output_data)[:500] if output_data else None,
+            'execution_time_ms': execution_time_ms,
+            'status': status,
+            'error_message': error_message
+        })
+        print(f"[LOG] Failed to save to DB, stored in memory: {str(e)}")
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -126,15 +178,25 @@ def analyze_image_with_vision(filepath, filename, prompt=None):
     Analyze an image using OpenAI's GPT-4 Vision API.
     Returns a detailed description of the image content.
     """
+    start_time = time.time()
+
     if not openai_client:
         # Fallback to OCR if vision is not available
         try:
             image = Image.open(filepath)
             ocr_text = pytesseract.image_to_string(image)
+            execution_time = int((time.time() - start_time) * 1000)
             if ocr_text.strip():
-                return f"[OCR Text Extracted - Vision not available]\n{ocr_text}"
+                result = f"[OCR Text Extracted - Vision not available]\n{ocr_text}"
+                log_execution("OCR (Tesseract)", "vision", filename, result[:500], execution_time, "success",
+                             metadata={"fallback": True, "reason": "Vision API not configured"})
+                return result
+            log_execution("OCR (Tesseract)", "vision", filename, "No text detected", execution_time, "success",
+                         metadata={"fallback": True, "reason": "Vision API not configured"})
             return "[Image file - No text detected. Vision API not configured for image analysis]"
         except Exception as e:
+            execution_time = int((time.time() - start_time) * 1000)
+            log_execution("OCR (Tesseract)", "vision", filename, None, execution_time, "error", str(e))
             return f"[Image file - Could not process: {str(e)}]"
 
     try:
@@ -190,6 +252,7 @@ Be thorough but concise."""
         )
 
         vision_analysis = response.choices[0].message.content
+        execution_time = int((time.time() - start_time) * 1000)
 
         # Also try OCR for any text that might be in the image
         try:
@@ -200,17 +263,28 @@ Be thorough but concise."""
         except:
             pass  # OCR is optional, don't fail if it doesn't work
 
+        # Log successful Vision API execution
+        log_execution("GPT-4 Vision", "vision", filename, vision_analysis[:500], execution_time, "success",
+                     metadata={"model": "gpt-4o-mini", "mime_type": mime_type})
+
         return vision_analysis
 
     except Exception as e:
+        execution_time = int((time.time() - start_time) * 1000)
         # Fallback to OCR on error
         try:
             image = Image.open(filepath)
             ocr_text = pytesseract.image_to_string(image)
             if ocr_text.strip():
-                return f"[Vision API error - OCR fallback]\n{ocr_text}"
+                result = f"[Vision API error - OCR fallback]\n{ocr_text}"
+                log_execution("OCR (Tesseract)", "vision", filename, result[:500], execution_time, "success",
+                             metadata={"fallback": True, "vision_error": str(e)})
+                return result
+            log_execution("GPT-4 Vision", "vision", filename, None, execution_time, "error", str(e))
             return f"[Image analysis failed: {str(e)}]"
         except Exception as ocr_error:
+            log_execution("GPT-4 Vision", "vision", filename, None, execution_time, "error",
+                         f"Vision: {str(e)}, OCR: {str(ocr_error)}")
             return f"[Image file - Could not analyze: {str(e)}]"
 
 # Perplexica Search Tool - Open source AI-powered search engine
@@ -266,8 +340,11 @@ class PerplexicaSearchTool(BaseTool):
 
     def _run(self, query: str) -> str:
         """Execute the search query using Perplexica."""
+        start_time = time.time()
+        focus_mode = None
         try:
             if not self.backend_url:
+                log_execution("Perplexica", "search", query, None, 0, "error", "Backend URL not configured")
                 return "Error: Perplexica backend URL not configured"
 
             # Determine focus mode based on query
@@ -296,8 +373,13 @@ class PerplexicaSearchTool(BaseTool):
                 timeout=60
             )
 
+            execution_time = int((time.time() - start_time) * 1000)
+
             if response.status_code != 200:
-                return f"Search error: Perplexica returned status {response.status_code}"
+                error_msg = f"Perplexica returned status {response.status_code}"
+                log_execution("Perplexica", "search", query, None, execution_time, "error", error_msg,
+                             metadata={"focus_mode": focus_mode, "status_code": response.status_code})
+                return f"Search error: {error_msg}"
 
             result = response.json()
 
@@ -309,23 +391,37 @@ class PerplexicaSearchTool(BaseTool):
                 formatted_output.append(f"**Answer:**\n{result['message']}\n")
 
             # Get sources/citations if available
+            sources_count = 0
             if "sources" in result and result["sources"]:
+                sources_count = len(result["sources"])
                 formatted_output.append("\n**Sources:**")
                 for i, source in enumerate(result["sources"][:5], 1):
                     title = source.get("title", "Unknown")
                     url = source.get("url", "")
                     formatted_output.append(f"{i}. [{title}]({url})")
 
-            if formatted_output:
-                return "\n".join(formatted_output)
-            else:
-                return f"No results found for: {query}"
+            output = "\n".join(formatted_output) if formatted_output else f"No results found for: {query}"
+
+            # Log successful execution
+            log_execution("Perplexica", "search", query, output[:500], execution_time, "success",
+                         metadata={"focus_mode": focus_mode, "sources_count": sources_count})
+
+            return output
 
         except requests.exceptions.Timeout:
+            execution_time = int((time.time() - start_time) * 1000)
+            log_execution("Perplexica", "search", query, None, execution_time, "timeout",
+                         "Request timed out", metadata={"focus_mode": focus_mode})
             return "Search error: Request timed out. Perplexica server may be slow or unavailable."
         except requests.exceptions.ConnectionError:
+            execution_time = int((time.time() - start_time) * 1000)
+            log_execution("Perplexica", "search", query, None, execution_time, "error",
+                         "Connection error", metadata={"focus_mode": focus_mode})
             return "Search error: Could not connect to Perplexica. Make sure it's running."
         except Exception as e:
+            execution_time = int((time.time() - start_time) * 1000)
+            log_execution("Perplexica", "search", query, None, execution_time, "error",
+                         str(e), metadata={"focus_mode": focus_mode})
             return f"Search error: {str(e)}"
 
 # Initialize search tool - tries Perplexica first, falls back to SerpAPI
@@ -395,14 +491,31 @@ if not search_tool:
                         self.api_key = api_key
 
                     def _run(self, query: str) -> str:
-                        from serpapi import GoogleSearch
-                        search = GoogleSearch({"q": query, "api_key": self.api_key, "num": 10})
-                        results = search.get_dict()
-                        output = []
-                        if "organic_results" in results:
-                            for i, r in enumerate(results["organic_results"][:5], 1):
-                                output.append(f"{i}. **{r.get('title', 'No title')}**\n   {r.get('snippet', '')}\n   🔗 {r.get('link', '')}")
-                        return "\n".join(output) if output else f"No results for: {query}"
+                        start_time = time.time()
+                        try:
+                            from serpapi import GoogleSearch
+                            search = GoogleSearch({"q": query, "api_key": self.api_key, "num": 10})
+                            results = search.get_dict()
+                            execution_time = int((time.time() - start_time) * 1000)
+
+                            output = []
+                            results_count = 0
+                            if "organic_results" in results:
+                                results_count = len(results["organic_results"])
+                                for i, r in enumerate(results["organic_results"][:5], 1):
+                                    output.append(f"{i}. **{r.get('title', 'No title')}**\n   {r.get('snippet', '')}\n   🔗 {r.get('link', '')}")
+
+                            result_text = "\n".join(output) if output else f"No results for: {query}"
+
+                            # Log successful execution
+                            log_execution("SerpAPI", "search", query, result_text[:500], execution_time, "success",
+                                         metadata={"results_count": results_count})
+
+                            return result_text
+                        except Exception as e:
+                            execution_time = int((time.time() - start_time) * 1000)
+                            log_execution("SerpAPI", "search", query, None, execution_time, "error", str(e))
+                            return f"Search error: {str(e)}"
 
                 search_tool = SerpAPIFallbackTool(api_key=serp_api_key)
                 search_tool_type = "SerpAPI"
@@ -607,6 +720,124 @@ def home():
 @login_required
 def architecture():
     return render_template('architecture.html')
+
+@app.route('/logs')
+@login_required
+def logs():
+    return render_template('logs.html')
+
+@app.route('/api/logs')
+@login_required
+def get_logs():
+    """API endpoint to fetch execution logs"""
+    try:
+        # Get query parameters
+        limit = request.args.get('limit', 100, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        tool_type = request.args.get('type', None)
+        status = request.args.get('status', None)
+
+        # Build query
+        query = ExecutionLog.query.order_by(ExecutionLog.timestamp.desc())
+
+        if tool_type:
+            query = query.filter(ExecutionLog.tool_type == tool_type)
+        if status:
+            query = query.filter(ExecutionLog.status == status)
+
+        # Get total count
+        total = query.count()
+
+        # Apply pagination
+        logs = query.offset(offset).limit(limit).all()
+
+        # Format logs for JSON response
+        logs_data = []
+        for log in logs:
+            metadata = None
+            if log.metadata:
+                try:
+                    metadata = json.loads(log.metadata)
+                except:
+                    metadata = log.metadata
+
+            logs_data.append({
+                'id': log.id,
+                'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                'tool_name': log.tool_name,
+                'tool_type': log.tool_type,
+                'input_data': log.input_data,
+                'output_data': log.output_data,
+                'execution_time_ms': log.execution_time_ms,
+                'status': log.status,
+                'error_message': log.error_message,
+                'metadata': metadata
+            })
+
+        # Also include in-memory logs
+        memory_logs = [{**log, 'source': 'memory'} for log in execution_logs_memory[-50:]]
+
+        return jsonify({
+            'success': True,
+            'total': total,
+            'logs': logs_data,
+            'memory_logs': memory_logs
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/logs/stats')
+@login_required
+def get_log_stats():
+    """Get statistics about execution logs"""
+    try:
+        total_executions = ExecutionLog.query.count()
+        successful = ExecutionLog.query.filter_by(status='success').count()
+        errors = ExecutionLog.query.filter_by(status='error').count()
+        timeouts = ExecutionLog.query.filter_by(status='timeout').count()
+
+        # Average execution time
+        from sqlalchemy import func
+        avg_time = db.session.query(func.avg(ExecutionLog.execution_time_ms)).scalar() or 0
+
+        # Tool type breakdown
+        tool_stats = db.session.query(
+            ExecutionLog.tool_type,
+            func.count(ExecutionLog.id)
+        ).group_by(ExecutionLog.tool_type).all()
+
+        # Tool name breakdown
+        tool_name_stats = db.session.query(
+            ExecutionLog.tool_name,
+            func.count(ExecutionLog.id)
+        ).group_by(ExecutionLog.tool_name).all()
+
+        return jsonify({
+            'success': True,
+            'stats': {
+                'total': total_executions,
+                'successful': successful,
+                'errors': errors,
+                'timeouts': timeouts,
+                'avg_execution_time_ms': round(avg_time, 2),
+                'by_type': {t[0]: t[1] for t in tool_stats},
+                'by_tool': {t[0]: t[1] for t in tool_name_stats}
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/logs/clear', methods=['POST'])
+@login_required
+def clear_logs():
+    """Clear all execution logs"""
+    try:
+        ExecutionLog.query.delete()
+        db.session.commit()
+        execution_logs_memory.clear()
+        return jsonify({'success': True, 'message': 'Logs cleared'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 def extract_text_from_file(filepath, filename):
     """Extract text from different file types"""
