@@ -655,6 +655,7 @@ class PerplexicaSearchTool(BaseTool):
                 # Append current date context if not already present
                 if str(current_year) not in query and current_date.strftime("%B") not in query:
                     search_query = f"{query} {current_month}"
+                    print(f"[SEARCH] News query detected. Using date: {current_month}. Query: {search_query}")
 
             # Build request payload
             payload = {
@@ -756,6 +757,7 @@ class DuckDuckGoSearchTool(BaseTool):
 
             if is_news and str(current_year) not in query:
                 search_query = f"{query} {current_month}"
+                print(f"[SEARCH] News query detected. Using date: {current_month}. Query: {search_query}")
 
             # Perform search
             with DDGS() as ddgs:
@@ -784,7 +786,7 @@ class DuckDuckGoSearchTool(BaseTool):
             result_text = "\n\n".join(output)
 
             log_execution("DuckDuckGo", "search", query, result_text[:500], execution_time, "success",
-                         extra_info={"search_engine": "DuckDuckGo", "results_count": len(results), "is_news": is_news})
+                         extra_info={"search_engine": "DuckDuckGo", "results_count": len(results), "is_news": is_news, "date_used": current_month, "actual_query": search_query})
 
             return result_text
 
