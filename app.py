@@ -24,9 +24,29 @@ import pytesseract
 import base64
 from openai import OpenAI
 import requests
+from neo4j import GraphDatabase
 
 # Load environment variables
 load_dotenv()
+
+# Neo4j Connection
+neo4j_driver = None
+neo4j_uri = os.environ.get('NEO4J_URI', 'bolt://localhost:7687')
+neo4j_user = os.environ.get('NEO4J_USER', 'neo4j')
+neo4j_password = os.environ.get('NEO4J_PASSWORD', '')
+
+if neo4j_password:
+    try:
+        neo4j_driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
+        # Test connection
+        with neo4j_driver.session() as session:
+            session.run("RETURN 1")
+        print(f"[SUCCESS] ✓ Neo4j connected at {neo4j_uri}")
+    except Exception as e:
+        print(f"[WARNING] Neo4j connection failed: {str(e)}")
+        neo4j_driver = None
+else:
+    print(f"[INFO] NEO4J_PASSWORD not set. Knowledge graph will use SQLite fallback.")
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24))
@@ -249,22 +269,141 @@ Return ONLY valid JSON, no other text."""
         print(f"[KNOWLEDGE] Entity extraction failed: {str(e)}")
         return {"entities": [], "relations": []}
 
-def store_entity(user_id: int, entity_type: str, name: str, description: str = None, attributes: dict = None, source: str = "conversation") -> KnowledgeEntity:
-    """Store or update an entity in the knowledge graph."""
+# Neo4j Knowledge Graph Functions
+def neo4j_store_entity(user_id: int, entity_type: str, name: str, description: str = None, attributes: dict = None, source: str = "conversation"):
+    """Store or update an entity in Neo4j."""
+    if not neo4j_driver:
+        return None
     try:
-        # Check if entity already exists for this user
-        existing = KnowledgeEntity.query.filter_by(
-            user_id=user_id,
-            entity_type=entity_type,
-            name=name
-        ).first()
+        with neo4j_driver.session() as session:
+            result = session.run("""
+                MERGE (e:Entity {user_id: $user_id, name: $name, type: $type})
+                ON CREATE SET
+                    e.description = $description,
+                    e.attributes = $attributes,
+                    e.source = $source,
+                    e.access_count = 1,
+                    e.created_at = datetime(),
+                    e.updated_at = datetime()
+                ON MATCH SET
+                    e.description = COALESCE($description, e.description),
+                    e.attributes = COALESCE($attributes, e.attributes),
+                    e.access_count = e.access_count + 1,
+                    e.updated_at = datetime()
+                RETURN e.name as name, e.type as type, id(e) as id
+            """, user_id=user_id, name=name, type=entity_type,
+                description=description,
+                attributes=json.dumps(attributes) if attributes else None,
+                source=source)
+            record = result.single()
+            return {"id": record["id"], "name": record["name"], "type": record["type"]} if record else None
+    except Exception as e:
+        print(f"[NEO4J] Failed to store entity: {str(e)}")
+        return None
 
+def neo4j_store_relation(user_id: int, source_name: str, target_name: str, relation_type: str, description: str = None):
+    """Store a relationship between two entities in Neo4j."""
+    if not neo4j_driver:
+        return None
+    try:
+        with neo4j_driver.session() as session:
+            result = session.run("""
+                MATCH (source:Entity {user_id: $user_id, name: $source_name})
+                MATCH (target:Entity {user_id: $user_id, name: $target_name})
+                MERGE (source)-[r:RELATES_TO {type: $relation_type}]->(target)
+                ON CREATE SET
+                    r.description = $description,
+                    r.strength = 1.0,
+                    r.created_at = datetime()
+                ON MATCH SET
+                    r.strength = CASE WHEN r.strength < 1.0 THEN r.strength + 0.1 ELSE 1.0 END,
+                    r.description = COALESCE($description, r.description)
+                RETURN type(r) as rel_type, r.strength as strength
+            """, user_id=user_id, source_name=source_name, target_name=target_name,
+                relation_type=relation_type, description=description)
+            return result.single()
+    except Exception as e:
+        print(f"[NEO4J] Failed to store relation: {str(e)}")
+        return None
+
+def neo4j_get_user_entities(user_id: int, limit: int = 20):
+    """Get all entities for a user from Neo4j."""
+    if not neo4j_driver:
+        return []
+    try:
+        with neo4j_driver.session() as session:
+            result = session.run("""
+                MATCH (e:Entity {user_id: $user_id})
+                WHERE e.name <> 'User'
+                RETURN e.name as name, e.type as type, e.description as description,
+                       e.attributes as attributes, e.source as source,
+                       e.access_count as access_count, id(e) as id
+                ORDER BY e.access_count DESC
+                LIMIT $limit
+            """, user_id=user_id, limit=limit)
+            return [dict(record) for record in result]
+    except Exception as e:
+        print(f"[NEO4J] Failed to get entities: {str(e)}")
+        return []
+
+def neo4j_get_user_relations(user_id: int, limit: int = 20):
+    """Get all relations for a user from Neo4j."""
+    if not neo4j_driver:
+        return []
+    try:
+        with neo4j_driver.session() as session:
+            result = session.run("""
+                MATCH (source:Entity {user_id: $user_id})-[r:RELATES_TO]->(target:Entity {user_id: $user_id})
+                RETURN source.name as source_name, r.type as relation_type,
+                       target.name as target_name, r.strength as strength,
+                       r.description as description, id(r) as id
+                ORDER BY r.strength DESC
+                LIMIT $limit
+            """, user_id=user_id, limit=limit)
+            return [dict(record) for record in result]
+    except Exception as e:
+        print(f"[NEO4J] Failed to get relations: {str(e)}")
+        return []
+
+def neo4j_clear_user_knowledge(user_id: int):
+    """Clear all knowledge for a user in Neo4j."""
+    if not neo4j_driver:
+        return False
+    try:
+        with neo4j_driver.session() as session:
+            session.run("""
+                MATCH (e:Entity {user_id: $user_id})
+                DETACH DELETE e
+            """, user_id=user_id)
+            return True
+    except Exception as e:
+        print(f"[NEO4J] Failed to clear knowledge: {str(e)}")
+        return False
+
+def neo4j_delete_entity(user_id: int, entity_name: str):
+    """Delete a specific entity from Neo4j."""
+    if not neo4j_driver:
+        return False
+    try:
+        with neo4j_driver.session() as session:
+            session.run("""
+                MATCH (e:Entity {user_id: $user_id, name: $name})
+                DETACH DELETE e
+            """, user_id=user_id, name=entity_name)
+            return True
+    except Exception as e:
+        print(f"[NEO4J] Failed to delete entity: {str(e)}")
+        return False
+
+# SQLite fallback functions (used when Neo4j is not available)
+def sqlite_store_entity(user_id: int, entity_type: str, name: str, description: str = None, attributes: dict = None, source: str = "conversation"):
+    """Store or update an entity in SQLite (fallback)."""
+    try:
+        existing = KnowledgeEntity.query.filter_by(user_id=user_id, entity_type=entity_type, name=name).first()
         if existing:
-            # Update existing entity
             if description:
                 existing.description = description
             if attributes:
-                # Merge attributes
                 existing_attrs = json.loads(existing.attributes) if existing.attributes else {}
                 existing_attrs.update(attributes)
                 existing.attributes = json.dumps(existing_attrs)
@@ -273,11 +412,8 @@ def store_entity(user_id: int, entity_type: str, name: str, description: str = N
             db.session.commit()
             return existing
         else:
-            # Create new entity
             entity = KnowledgeEntity(
-                user_id=user_id,
-                entity_type=entity_type,
-                name=name,
+                user_id=user_id, entity_type=entity_type, name=name,
                 description=description,
                 attributes=json.dumps(attributes) if attributes else None,
                 source=source
@@ -290,29 +426,23 @@ def store_entity(user_id: int, entity_type: str, name: str, description: str = N
         db.session.rollback()
         return None
 
-def store_relation(user_id: int, source_entity: KnowledgeEntity, target_entity: KnowledgeEntity, relation_type: str, description: str = None) -> KnowledgeRelation:
-    """Store a relationship between two entities."""
+def sqlite_store_relation(user_id: int, source_entity, target_entity, relation_type: str, description: str = None):
+    """Store a relationship in SQLite (fallback)."""
     try:
-        # Check if relation already exists
         existing = KnowledgeRelation.query.filter_by(
-            user_id=user_id,
-            source_id=source_entity.id,
-            target_id=target_entity.id,
-            relation_type=relation_type
+            user_id=user_id, source_id=source_entity.id,
+            target_id=target_entity.id, relation_type=relation_type
         ).first()
-
         if existing:
             if description:
                 existing.description = description
-            existing.strength = min(existing.strength + 0.1, 1.0)  # Increase strength
+            existing.strength = min(existing.strength + 0.1, 1.0)
             db.session.commit()
             return existing
         else:
             relation = KnowledgeRelation(
-                user_id=user_id,
-                source_id=source_entity.id,
-                target_id=target_entity.id,
-                relation_type=relation_type,
+                user_id=user_id, source_id=source_entity.id,
+                target_id=target_entity.id, relation_type=relation_type,
                 description=description
             )
             db.session.add(relation)
@@ -323,10 +453,24 @@ def store_relation(user_id: int, source_entity: KnowledgeEntity, target_entity: 
         db.session.rollback()
         return None
 
+# Unified functions that use Neo4j when available, SQLite otherwise
+def store_entity(user_id: int, entity_type: str, name: str, description: str = None, attributes: dict = None, source: str = "conversation"):
+    """Store or update an entity - uses Neo4j if available, SQLite fallback."""
+    if neo4j_driver:
+        return neo4j_store_entity(user_id, entity_type, name, description, attributes, source)
+    return sqlite_store_entity(user_id, entity_type, name, description, attributes, source)
+
+def store_relation(user_id: int, source_entity, target_entity, relation_type: str, description: str = None):
+    """Store a relationship - uses Neo4j if available, SQLite fallback."""
+    if neo4j_driver:
+        source_name = source_entity.get("name") if isinstance(source_entity, dict) else source_entity.name
+        target_name = target_entity.get("name") if isinstance(target_entity, dict) else target_entity.name
+        return neo4j_store_relation(user_id, source_name, target_name, relation_type, description)
+    return sqlite_store_relation(user_id, source_entity, target_entity, relation_type, description)
+
 def update_knowledge_graph(user_id: int, user_message: str, assistant_response: str):
     """Update the knowledge graph based on a conversation exchange."""
     try:
-        # Extract entities and relations
         extracted = extract_entities_from_conversation(user_message, assistant_response, user_id)
 
         if not extracted.get("entities") and not extracted.get("relations"):
@@ -354,14 +498,12 @@ def update_knowledge_graph(user_id: int, user_message: str, assistant_response: 
             source_name = rel.get("source", "User")
             target_name = rel.get("target")
 
-            # Get or create source entity
             if source_name not in entity_map:
                 source_ent = store_entity(user_id, "person", source_name, source="conversation")
                 entity_map[source_name] = source_ent
             else:
                 source_ent = entity_map[source_name]
 
-            # Get or create target entity
             if target_name not in entity_map:
                 target_ent = store_entity(user_id, "topic", target_name, source="conversation")
                 entity_map[target_name] = target_ent
@@ -377,35 +519,14 @@ def update_knowledge_graph(user_id: int, user_message: str, assistant_response: 
                     description=rel.get("description")
                 )
 
-        print(f"[KNOWLEDGE] Updated graph: {len(extracted.get('entities', []))} entities, {len(extracted.get('relations', []))} relations")
+        db_type = "Neo4j" if neo4j_driver else "SQLite"
+        print(f"[KNOWLEDGE] Updated {db_type} graph: {len(extracted.get('entities', []))} entities, {len(extracted.get('relations', []))} relations")
     except Exception as e:
         print(f"[KNOWLEDGE] Failed to update knowledge graph: {str(e)}")
 
 def get_user_knowledge_context(user_id: int, query: str = None, limit: int = 20) -> str:
     """Get relevant knowledge about the user to provide context for responses."""
     try:
-        # Get user's entities and relations
-        entities = KnowledgeEntity.query.filter_by(user_id=user_id).order_by(
-            KnowledgeEntity.access_count.desc(),
-            KnowledgeEntity.updated_at.desc()
-        ).limit(limit).all()
-
-        if not entities:
-            return ""
-
-        context_parts = ["## What I know about you:"]
-
-        # Group entities by type
-        by_type = {}
-        for ent in entities:
-            if ent.name == "User":
-                continue
-            etype = ent.entity_type
-            if etype not in by_type:
-                by_type[etype] = []
-            by_type[etype].append(ent)
-
-        # Format context
         type_labels = {
             "preference": "Your preferences",
             "interest": "Your interests",
@@ -418,28 +539,83 @@ def get_user_knowledge_context(user_id: int, query: str = None, limit: int = 20)
             "fact": "Facts about you"
         }
 
-        for etype, ents in by_type.items():
-            label = type_labels.get(etype, etype.title())
-            items = [f"- {e.name}" + (f": {e.description}" if e.description else "") for e in ents[:5]]
-            if items:
-                context_parts.append(f"\n**{label}:**")
-                context_parts.extend(items)
+        if neo4j_driver:
+            # Use Neo4j
+            entities = neo4j_get_user_entities(user_id, limit)
+            relations = neo4j_get_user_relations(user_id, 10)
 
-        # Get some key relations
-        relations = KnowledgeRelation.query.filter_by(user_id=user_id).order_by(
-            KnowledgeRelation.strength.desc()
-        ).limit(10).all()
+            if not entities:
+                return ""
 
-        if relations:
-            context_parts.append("\n**Key relationships:**")
-            for rel in relations:
-                source = rel.source_entity.name if rel.source_entity else "?"
-                target = rel.target_entity.name if rel.target_entity else "?"
-                if source == "User":
-                    source = "You"
-                context_parts.append(f"- {source} {rel.relation_type.replace('_', ' ')} {target}")
+            context_parts = ["## What I know about you:"]
 
-        return "\n".join(context_parts) if len(context_parts) > 1 else ""
+            by_type = {}
+            for ent in entities:
+                etype = ent.get("type", "topic")
+                if etype not in by_type:
+                    by_type[etype] = []
+                by_type[etype].append(ent)
+
+            for etype, ents in by_type.items():
+                label = type_labels.get(etype, etype.title())
+                items = [f"- {e.get('name')}" + (f": {e.get('description')}" if e.get('description') else "") for e in ents[:5]]
+                if items:
+                    context_parts.append(f"\n**{label}:**")
+                    context_parts.extend(items)
+
+            if relations:
+                context_parts.append("\n**Key relationships:**")
+                for rel in relations:
+                    source = rel.get("source_name", "?")
+                    target = rel.get("target_name", "?")
+                    rel_type = rel.get("relation_type", "related_to")
+                    if source == "User":
+                        source = "You"
+                    context_parts.append(f"- {source} {rel_type.replace('_', ' ')} {target}")
+
+            return "\n".join(context_parts) if len(context_parts) > 1 else ""
+        else:
+            # Use SQLite fallback
+            entities = KnowledgeEntity.query.filter_by(user_id=user_id).order_by(
+                KnowledgeEntity.access_count.desc(),
+                KnowledgeEntity.updated_at.desc()
+            ).limit(limit).all()
+
+            if not entities:
+                return ""
+
+            context_parts = ["## What I know about you:"]
+
+            by_type = {}
+            for ent in entities:
+                if ent.name == "User":
+                    continue
+                etype = ent.entity_type
+                if etype not in by_type:
+                    by_type[etype] = []
+                by_type[etype].append(ent)
+
+            for etype, ents in by_type.items():
+                label = type_labels.get(etype, etype.title())
+                items = [f"- {e.name}" + (f": {e.description}" if e.description else "") for e in ents[:5]]
+                if items:
+                    context_parts.append(f"\n**{label}:**")
+                    context_parts.extend(items)
+
+            relations = KnowledgeRelation.query.filter_by(user_id=user_id).order_by(
+                KnowledgeRelation.strength.desc()
+            ).limit(10).all()
+
+            if relations:
+                context_parts.append("\n**Key relationships:**")
+                for rel in relations:
+                    source = rel.source_entity.name if rel.source_entity else "?"
+                    target = rel.target_entity.name if rel.target_entity else "?"
+                    if source == "User":
+                        source = "You"
+                    context_parts.append(f"- {source} {rel.relation_type.replace('_', ' ')} {target}")
+
+            return "\n".join(context_parts) if len(context_parts) > 1 else ""
     except Exception as e:
         print(f"[KNOWLEDGE] Failed to get user context: {str(e)}")
         return ""
@@ -1062,58 +1238,97 @@ def knowledge():
 @app.route('/api/knowledge')
 @login_required
 def get_knowledge():
-    """Get the user's knowledge graph data"""
+    """Get the user's knowledge graph data - uses Neo4j if available"""
     try:
-        entities = KnowledgeEntity.query.filter_by(user_id=current_user.id).order_by(
-            KnowledgeEntity.access_count.desc()
-        ).all()
+        db_type = "neo4j" if neo4j_driver else "sqlite"
 
-        relations = KnowledgeRelation.query.filter_by(user_id=current_user.id).all()
+        if neo4j_driver:
+            # Use Neo4j
+            entities_raw = neo4j_get_user_entities(current_user.id, 100)
+            relations_raw = neo4j_get_user_relations(current_user.id, 100)
 
-        entities_data = []
-        for ent in entities:
-            attrs = None
-            if ent.attributes:
-                try:
-                    attrs = json.loads(ent.attributes)
-                except:
-                    attrs = ent.attributes
+            entities_data = []
+            for ent in entities_raw:
+                attrs = None
+                if ent.get('attributes'):
+                    try:
+                        attrs = json.loads(ent['attributes'])
+                    except:
+                        attrs = ent['attributes']
 
-            entities_data.append({
-                'id': ent.id,
-                'type': ent.entity_type,
-                'name': ent.name,
-                'description': ent.description,
-                'attributes': attrs,
-                'confidence': ent.confidence,
-                'source': ent.source,
-                'access_count': ent.access_count,
-                'created_at': ent.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                'updated_at': ent.updated_at.strftime('%Y-%m-%d %H:%M:%S')
-            })
+                entities_data.append({
+                    'id': ent.get('id'),
+                    'type': ent.get('type'),
+                    'name': ent.get('name'),
+                    'description': ent.get('description'),
+                    'attributes': attrs,
+                    'source': ent.get('source'),
+                    'access_count': ent.get('access_count', 0)
+                })
 
-        relations_data = []
-        for rel in relations:
-            relations_data.append({
-                'id': rel.id,
-                'source_id': rel.source_id,
-                'source_name': rel.source_entity.name if rel.source_entity else None,
-                'target_id': rel.target_id,
-                'target_name': rel.target_entity.name if rel.target_entity else None,
-                'relation_type': rel.relation_type,
-                'description': rel.description,
-                'strength': rel.strength,
-                'created_at': rel.created_at.strftime('%Y-%m-%d %H:%M:%S')
-            })
+            relations_data = []
+            for rel in relations_raw:
+                relations_data.append({
+                    'id': rel.get('id'),
+                    'source_name': rel.get('source_name'),
+                    'target_name': rel.get('target_name'),
+                    'relation_type': rel.get('relation_type'),
+                    'description': rel.get('description'),
+                    'strength': rel.get('strength', 1.0)
+                })
+        else:
+            # Use SQLite fallback
+            entities = KnowledgeEntity.query.filter_by(user_id=current_user.id).order_by(
+                KnowledgeEntity.access_count.desc()
+            ).all()
+
+            relations = KnowledgeRelation.query.filter_by(user_id=current_user.id).all()
+
+            entities_data = []
+            for ent in entities:
+                attrs = None
+                if ent.attributes:
+                    try:
+                        attrs = json.loads(ent.attributes)
+                    except:
+                        attrs = ent.attributes
+
+                entities_data.append({
+                    'id': ent.id,
+                    'type': ent.entity_type,
+                    'name': ent.name,
+                    'description': ent.description,
+                    'attributes': attrs,
+                    'confidence': ent.confidence,
+                    'source': ent.source,
+                    'access_count': ent.access_count,
+                    'created_at': ent.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    'updated_at': ent.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                })
+
+            relations_data = []
+            for rel in relations:
+                relations_data.append({
+                    'id': rel.id,
+                    'source_id': rel.source_id,
+                    'source_name': rel.source_entity.name if rel.source_entity else None,
+                    'target_id': rel.target_id,
+                    'target_name': rel.target_entity.name if rel.target_entity else None,
+                    'relation_type': rel.relation_type,
+                    'description': rel.description,
+                    'strength': rel.strength,
+                    'created_at': rel.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                })
 
         return jsonify({
             'success': True,
+            'database': db_type,
             'entities': entities_data,
             'relations': relations_data,
             'stats': {
                 'total_entities': len(entities_data),
                 'total_relations': len(relations_data),
-                'entity_types': list(set(e['type'] for e in entities_data))
+                'entity_types': list(set(e['type'] for e in entities_data if e.get('type')))
             }
         })
     except Exception as e:
@@ -1134,16 +1349,19 @@ def add_entity():
             source='manual'
         )
         if entity:
-            return jsonify({'success': True, 'entity_id': entity.id})
+            entity_id = entity.get('id') if isinstance(entity, dict) else entity.id
+            return jsonify({'success': True, 'entity_id': entity_id})
         return jsonify({'success': False, 'error': 'Failed to create entity'}), 400
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/knowledge/entity/<int:entity_id>', methods=['DELETE'])
 @login_required
-def delete_entity(entity_id):
-    """Delete an entity from the knowledge graph"""
+def delete_entity_by_id(entity_id):
+    """Delete an entity from the knowledge graph by ID (SQLite only)"""
     try:
+        if neo4j_driver:
+            return jsonify({'success': False, 'error': 'Use /api/knowledge/entity/name/<name> for Neo4j'}), 400
         entity = KnowledgeEntity.query.filter_by(id=entity_id, user_id=current_user.id).first()
         if not entity:
             return jsonify({'success': False, 'error': 'Entity not found'}), 404
@@ -1154,15 +1372,42 @@ def delete_entity(entity_id):
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/knowledge/entity/name/<name>', methods=['DELETE'])
+@login_required
+def delete_entity_by_name(name):
+    """Delete an entity from the knowledge graph by name"""
+    try:
+        if neo4j_driver:
+            success = neo4j_delete_entity(current_user.id, name)
+            if success:
+                return jsonify({'success': True})
+            return jsonify({'success': False, 'error': 'Failed to delete entity'}), 400
+        else:
+            entity = KnowledgeEntity.query.filter_by(name=name, user_id=current_user.id).first()
+            if not entity:
+                return jsonify({'success': False, 'error': 'Entity not found'}), 404
+            db.session.delete(entity)
+            db.session.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/knowledge/clear', methods=['POST'])
 @login_required
 def clear_knowledge():
     """Clear all knowledge graph data for the current user"""
     try:
-        KnowledgeRelation.query.filter_by(user_id=current_user.id).delete()
-        KnowledgeEntity.query.filter_by(user_id=current_user.id).delete()
-        db.session.commit()
-        return jsonify({'success': True, 'message': 'Knowledge graph cleared'})
+        if neo4j_driver:
+            success = neo4j_clear_user_knowledge(current_user.id)
+            if success:
+                return jsonify({'success': True, 'message': 'Neo4j knowledge graph cleared'})
+            return jsonify({'success': False, 'error': 'Failed to clear Neo4j knowledge'}), 500
+        else:
+            KnowledgeRelation.query.filter_by(user_id=current_user.id).delete()
+            KnowledgeEntity.query.filter_by(user_id=current_user.id).delete()
+            db.session.commit()
+            return jsonify({'success': True, 'message': 'SQLite knowledge graph cleared'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
