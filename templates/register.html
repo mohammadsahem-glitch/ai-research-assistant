@@ -12,36 +12,47 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
+            font-family: 'Söhne', 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+            background: #343541;
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
+            color: #ececf1;
+        }
+
+        .register-wrapper {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
         }
 
         .register-container {
-            background: white;
+            background: #202123;
             padding: 40px;
             border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            width: 100%;
-            max-width: 400px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
         }
 
         .register-header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 32px;
+        }
+
+        .register-logo {
+            font-size: 48px;
+            margin-bottom: 16px;
         }
 
         .register-header h1 {
-            color: #333;
-            font-size: 28px;
-            margin-bottom: 10px;
+            color: #ececf1;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
         }
 
         .register-header p {
-            color: #666;
+            color: #8e8ea0;
             font-size: 14px;
         }
 
@@ -52,7 +63,7 @@
         .form-group label {
             display: block;
             margin-bottom: 8px;
-            color: #333;
+            color: #ececf1;
             font-weight: 500;
             font-size: 14px;
         }
@@ -60,144 +71,214 @@
         .form-group input {
             width: 100%;
             padding: 12px 16px;
-            border: 2px solid #e5e7eb;
+            background: #343541;
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 8px;
             font-size: 15px;
+            color: #ececf1;
             outline: none;
-            transition: border-color 0.3s;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .form-group input::placeholder {
+            color: #6b6b7b;
         }
 
         .form-group input:focus {
-            border-color: #667eea;
+            border-color: #19c37d;
+            box-shadow: 0 0 0 2px rgba(25, 195, 125, 0.2);
+        }
+
+        .password-requirements {
+            font-size: 12px;
+            color: #6b6b7b;
+            margin-top: 6px;
         }
 
         .register-button {
             width: 100%;
             padding: 14px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #19c37d;
             color: white;
             border: none;
             border-radius: 8px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: background 0.2s, transform 0.1s;
         }
 
         .register-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            background: #1a9d68;
         }
 
         .register-button:active {
-            transform: translateY(0);
+            transform: scale(0.98);
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 24px 0;
+            color: #6b6b7b;
+            font-size: 13px;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .divider span {
+            padding: 0 16px;
         }
 
         .login-link {
             text-align: center;
-            margin-top: 20px;
-            color: #666;
+            color: #8e8ea0;
             font-size: 14px;
         }
 
         .login-link a {
-            color: #667eea;
+            color: #19c37d;
             text-decoration: none;
             font-weight: 600;
+            transition: color 0.2s;
         }
 
         .login-link a:hover {
+            color: #1a9d68;
             text-decoration: underline;
         }
 
-        .error-message {
-            background: #fee;
-            color: #c33;
-            padding: 12px;
+        .message {
+            padding: 12px 16px;
             border-radius: 8px;
             margin-bottom: 20px;
             font-size: 14px;
             display: none;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #f87171;
         }
 
         .success-message {
-            background: #efe;
-            color: #3c3;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            display: none;
+            background: rgba(25, 195, 125, 0.15);
+            border: 1px solid rgba(25, 195, 125, 0.3);
+            color: #19c37d;
         }
 
-        .password-requirements {
+        .benefits {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .benefits-title {
+            text-align: center;
+            color: #8e8ea0;
             font-size: 12px;
-            color: #666;
-            margin-top: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
         }
 
-        /* Mobile Responsive */
-        @media (max-width: 480px) {
-            body {
-                padding: 16px;
-            }
+        .benefits-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
 
+        .benefit-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #8e8ea0;
+        }
+
+        .benefit-icon {
+            font-size: 16px;
+            width: 24px;
+            text-align: center;
+        }
+
+        @media (max-width: 480px) {
             .register-container {
                 padding: 24px 20px;
             }
 
             .register-header h1 {
-                font-size: 24px;
-            }
-
-            .register-header p {
-                font-size: 13px;
-            }
-
-            .form-group input {
-                padding: 10px 14px;
-                font-size: 14px;
-            }
-
-            .register-button {
-                padding: 12px;
-                font-size: 15px;
+                font-size: 20px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="register-container">
-        <div class="register-header">
-            <h1>🤖 AI Research Assistant</h1>
-            <p>Create your account</p>
-        </div>
-
-        <div class="error-message" id="errorMessage"></div>
-        <div class="success-message" id="successMessage"></div>
-
-        <form id="registerForm">
-            <div class="form-group">
-                <label for="email">📧 Email</label>
-                <input type="email" id="email" name="email" placeholder="Enter your email" required>
+    <div class="register-wrapper">
+        <div class="register-container">
+            <div class="register-header">
+                <div class="register-logo">🤖</div>
+                <h1>AI Research Assistant</h1>
+                <p>Create your account</p>
             </div>
 
-            <div class="form-group">
-                <label for="password">🔒 Password</label>
-                <input type="password" id="password" name="password" placeholder="Create a password" required minlength="6">
-                <div class="password-requirements">Minimum 6 characters</div>
+            <div class="message error-message" id="errorMessage"></div>
+            <div class="message success-message" id="successMessage"></div>
+
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" placeholder="Enter your email" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Create a password" required minlength="6">
+                    <div class="password-requirements">Minimum 6 characters</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm your password" required minlength="6">
+                </div>
+
+                <button type="submit" class="register-button">Create Account</button>
+            </form>
+
+            <div class="divider"><span>or</span></div>
+
+            <div class="login-link">
+                Already have an account? <a href="/login">Sign in</a>
             </div>
 
-            <div class="form-group">
-                <label for="confirmPassword">🔒 Confirm Password</label>
-                <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm your password" required minlength="6">
+            <div class="benefits">
+                <div class="benefits-title">What you'll get</div>
+                <div class="benefits-list">
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✓</span>
+                        <span>AI-powered research assistance</span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✓</span>
+                        <span>Real-time web search capabilities</span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✓</span>
+                        <span>Document & image analysis</span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✓</span>
+                        <span>Personal knowledge graph</span>
+                    </div>
+                </div>
             </div>
-
-            <button type="submit" class="register-button">Register</button>
-        </form>
-
-        <div class="login-link">
-            Already have an account? <a href="/login">Login here</a>
         </div>
     </div>
 
@@ -208,6 +289,7 @@
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const confirmPassword = document.getElementById('confirmPassword').value;
+            const button = document.querySelector('.register-button');
 
             const errorMessage = document.getElementById('errorMessage');
             const successMessage = document.getElementById('successMessage');
@@ -227,6 +309,9 @@
                 return;
             }
 
+            button.textContent = 'Creating account...';
+            button.disabled = true;
+
             try {
                 const response = await fetch('/register', {
                     method: 'POST',
@@ -239,7 +324,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    successMessage.textContent = data.message;
+                    successMessage.textContent = 'Account created! Redirecting...';
                     successMessage.style.display = 'block';
                     setTimeout(() => {
                         window.location.href = '/';
@@ -247,10 +332,14 @@
                 } else {
                     errorMessage.textContent = data.message;
                     errorMessage.style.display = 'block';
+                    button.textContent = 'Create Account';
+                    button.disabled = false;
                 }
             } catch (error) {
                 errorMessage.textContent = 'An error occurred. Please try again.';
                 errorMessage.style.display = 'block';
+                button.textContent = 'Create Account';
+                button.disabled = false;
             }
         });
     </script>
